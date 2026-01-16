@@ -1,0 +1,35 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.iso
+*.img
+*.efi
+*.bin
+*.o
+*.a
+
+# QEMU
+OVMF.fd
+qemu-*
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
