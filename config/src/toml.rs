@@ -1,9 +1,8 @@
-#![no_std]
-
 extern crate alloc;
 
 use alloc::{
     collections::BTreeMap,
+    fmt,
     string::{String, ToString},
     vec::Vec,
 };
@@ -155,7 +154,8 @@ impl<'a> Parser<'a> {
             } else if ch.is_whitespace() || ch == '=' {
                 break;
             } else {
-                return Err(ConfigError::parse_error(&format!("Invalid character in key: {}", ch)));
+                let msg = fmt::format(format_args!("Invalid character in key: {}", ch));
+                return Err(ConfigError::parse_error(&msg));
             }
         }
         
@@ -187,7 +187,10 @@ impl<'a> Parser<'a> {
             Some('t') | Some('f') => {
                 self.parse_boolean()
             }
-            _ => Err(ConfigError::parse_error(&format!("Unexpected character: {:?}", self.peek())))
+            _ => {
+                let msg = fmt::format(format_args!("Unexpected character: {:?}", self.peek()));
+                Err(ConfigError::parse_error(&msg))
+            }
         }
     }
 
@@ -407,23 +410,27 @@ impl<'a> Parser<'a> {
         
         // Navigate/create nested structure
         let mut current = root;
-        for (i, key) in path.iter().enumerate().take(path.len() - 1) {
+        for key in path.iter().take(path.len() - 1) {
+            let needs_insert = !current.contains_key(key);
+            if needs_insert {
+                let new_table = BTreeMap::new();
+                current.insert(key.clone(), Value::Table(new_table));
+            }
+            
             match current.get_mut(key) {
                 Some(Value::Table(ref mut table)) => {
                     current = table;
                 }
                 Some(_) => {
-                    return Err(ConfigError::parse_error(&format!(
+                    let msg = fmt::format(format_args!(
                         "Key '{}' already exists as non-table",
                         key
-                    )));
+                    ));
+                    return Err(ConfigError::parse_error(&msg));
                 }
                 None => {
-                    let new_table = BTreeMap::new();
-                    current.insert(key.clone(), Value::Table(new_table));
-                    if let Some(Value::Table(ref mut table)) = current.get_mut(key) {
-                        current = table;
-                    }
+                    // This should never happen since we just inserted it
+                    unreachable!();
                 }
             }
         }
@@ -456,10 +463,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(())
             }
-            Some(ch) => Err(ConfigError::parse_error(&format!(
-                "Expected '{}', found '{}'",
-                expected, ch
-            ))),
+            Some(ch) => {
+                let msg = fmt::format(format_args!(
+                    "Expected '{}', found '{}'",
+                    expected, ch
+                ));
+                Err(ConfigError::parse_error(&msg))
+            }
             None => Err(ConfigError::UnexpectedEof),
         }
     }

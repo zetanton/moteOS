@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use alloc::fmt;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -196,15 +197,14 @@ impl GgufFile {
     pub fn get_tensor(&self, name: &str) -> Result<&[u8], ModelError> {
         let tensor = self.tensors.iter()
             .find(|t| t.name == name)
-            .ok_or_else(|| ModelError::TensorNotFound(name.to_string()))?;
+            .ok_or_else(|| ModelError::TensorNotFound(String::from(name)))?;
         
         let start = self.tensor_data_offset + tensor.offset as usize;
         let end = start + tensor.size;
         
         if end > self.data.len() {
-            return Err(ModelError::InvalidTensorAccess(
-                format!("Tensor {} extends beyond file end", name)
-            ));
+            let msg = fmt::format(format_args!("Tensor {} extends beyond file end", name));
+            return Err(ModelError::InvalidTensorAccess(msg));
         }
         
         Ok(&self.data[start..end])

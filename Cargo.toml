@@ -1,13 +1,9 @@
 [workspace]
 members = [
     "boot",
-    "network",
-    "wifi",
-    "tui",
     "llm",
     "inference",
     "config",
-    "kernel",
     "shared",
 ]
 
@@ -47,7 +43,7 @@ x86_64 = { version = "0.14", default-features = false, features = ["instructions
 smoltcp = { version = "0.11", default-features = false, features = ["alloc", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp", "socket-icmp", "socket-dhcpv4", "socket-dns"] }
 
 # TLS (may require std, but include for workspace)
-rustls = { version = "0.23", default-features = false, optional = true }
+rustls = { version = "0.23", default-features = false }
 
 # Common utilities
 heapless = { version = "0.8", default-features = false }
@@ -62,10 +58,10 @@ pbkdf2 = { version = "0.12", default-features = false }
 
 # AES (for WPA2 CCMP, encryption)
 aes = { version = "0.8", default-features = false }
-aes-gcm = { version = "0.10", default-features = false, optional = true }
+aes-gcm = { version = "0.10", default-features = false }
 
 # JSON parsing (for API clients)
-miniserde = { version = "0.1", default-features = false, optional = true }
+miniserde = { version = "0.1", default-features = false }
 
 # Workspace profile for release builds
 [profile.release]

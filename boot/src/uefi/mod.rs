@@ -1,5 +1,3 @@
-#![no_std]
-
 // UEFI boot support for moteOS
 // Provides UEFI boot services, framebuffer acquisition, and memory map handling
 

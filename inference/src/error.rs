@@ -66,7 +66,5 @@ impl core::fmt::Display for ParseError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for ModelError {}
-#[cfg(feature = "std")]
-impl std::error::Error for ParseError {}
+// std::error::Error is only available with std feature
+// In no_std, we only implement Display

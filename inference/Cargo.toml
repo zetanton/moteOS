@@ -7,8 +7,7 @@ edition = "2021"
 crate-type = ["lib"]
 
 [dependencies]
-# Core dependencies for no_std
-alloc = { version = "1.0", package = "alloc" }
+# alloc is part of the standard library, accessed via extern crate alloc
 
 [features]
 default = []
