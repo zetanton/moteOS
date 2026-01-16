@@ -1,9 +1,10 @@
 [package]
 name = "config"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [lib]
 crate-type = ["lib"]
 
-# No dependencies needed - uses extern crate alloc for no_std
+[dependencies]
+uefi = { workspace = true }
