@@ -28,6 +28,13 @@ impl TomlParser {
         let mut parser = Parser::new(data);
         parser.parse()
     }
+
+    /// Serialize a Value to TOML string
+    pub fn serialize(value: &Value) -> Result<String, ConfigError> {
+        let mut serializer = Serializer::new();
+        serializer.serialize(value)?;
+        Ok(serializer.output)
+    }
 }
 
 struct Parser<'a> {
@@ -514,6 +521,139 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// TOML serializer
+struct Serializer {
+    output: String,
+    indent: usize,
+}
+
+impl Serializer {
+    fn new() -> Self {
+        Self {
+            output: String::new(),
+            indent: 0,
+        }
+    }
+
+    fn serialize(&mut self, value: &Value) -> Result<(), ConfigError> {
+        match value {
+            Value::Table(table) => {
+                self.serialize_table(table, false)?;
+            }
+            _ => {
+                return Err(ConfigError::parse_error("Root value must be a table"));
+            }
+        }
+        Ok(())
+    }
+
+    fn serialize_table(
+        &mut self,
+        table: &BTreeMap<String, Value>,
+        inline: bool,
+    ) -> Result<(), ConfigError> {
+        if inline {
+            self.output.push('{');
+        }
+
+        let mut first = true;
+        for (key, value) in table {
+            if !first {
+                if inline {
+                    self.output.push_str(", ");
+                } else {
+                    self.output.push('\n');
+                }
+            }
+            first = false;
+
+            // Write key
+            if self.needs_quotes(key) {
+                self.serialize_string(key)?;
+            } else {
+                self.output.push_str(key);
+            }
+
+            self.output.push_str(" = ");
+            self.serialize_value(value)?;
+        }
+
+        if inline {
+            self.output.push('}');
+        }
+
+        Ok(())
+    }
+
+    fn serialize_value(&mut self, value: &Value) -> Result<(), ConfigError> {
+        match value {
+            Value::String(s) => {
+                self.serialize_string(s)?;
+            }
+            Value::Integer(i) => {
+                self.output.push_str(&i.to_string());
+            }
+            Value::Float(f) => {
+                // Format float with proper precision
+                let s = format!("{}", f);
+                self.output.push_str(&s);
+            }
+            Value::Boolean(b) => {
+                self.output.push_str(if *b { "true" } else { "false" });
+            }
+            Value::Array(arr) => {
+                self.output.push('[');
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.serialize_value(item)?;
+                }
+                self.output.push(']');
+            }
+            Value::Table(table) => {
+                // Inline table
+                self.serialize_table(table, true)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn serialize_string(&mut self, s: &str) -> Result<(), ConfigError> {
+        self.output.push('"');
+        for ch in s.chars() {
+            match ch {
+                '"' => self.output.push_str("\\\""),
+                '\\' => self.output.push_str("\\\\"),
+                '\n' => self.output.push_str("\\n"),
+                '\r' => self.output.push_str("\\r"),
+                '\t' => self.output.push_str("\\t"),
+                ch if ch.is_control() => {
+                    // Escape other control characters
+                    let code = ch as u32;
+                    self.output.push_str(&format!("\\u{:04x}", code));
+                }
+                ch => self.output.push(ch),
+            }
+        }
+        self.output.push('"');
+        Ok(())
+    }
+
+    fn needs_quotes(&self, s: &str) -> bool {
+        // Check if key needs quotes
+        if s.is_empty() {
+            return true;
+        }
+        for ch in s.chars() {
+            if !(ch.is_alphanumeric() || ch == '_' || ch == '-') {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -639,6 +779,33 @@ key = "value"
             }
         } else {
             panic!("Expected table");
+        }
+    }
+
+    #[test]
+    fn test_serialize_simple() {
+        let mut map = BTreeMap::new();
+        map.insert(String::from("key"), Value::String(String::from("value")));
+        let value = Value::Table(map);
+        let serialized = TomlParser::serialize(&value).unwrap();
+        assert!(serialized.contains("key = \"value\""));
+    }
+
+    #[test]
+    fn test_serialize_roundtrip() {
+        let toml = r#"key = "value"
+number = 42
+enabled = true"#;
+        let parsed = TomlParser::parse(toml).unwrap();
+        let serialized = TomlParser::serialize(&parsed).unwrap();
+        // Parse again to verify roundtrip
+        let reparsed = TomlParser::parse(&serialized).unwrap();
+        if let (Value::Table(orig), Value::Table(reparsed)) = (&parsed, &reparsed) {
+            assert_eq!(orig.get("key"), reparsed.get("key"));
+            assert_eq!(orig.get("number"), reparsed.get("number"));
+            assert_eq!(orig.get("enabled"), reparsed.get("enabled"));
+        } else {
+            panic!("Expected tables");
         }
     }
 }
