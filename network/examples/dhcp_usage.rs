@@ -75,8 +75,15 @@
 //!     0 // Placeholder
 //! }
 //!
+//! // Function to sleep/yield for specified milliseconds
+//! fn sleep_ms(ms: i64) {
+//!     // In a real implementation, use system timer
+//!     // For example: timer::sleep_ms(ms)
+//! }
+//!
 //! // Acquire DHCP configuration with 30 second timeout
-//! let config = stack.dhcp_acquire(30_000, get_system_time_ms)
+//! // Providing sleep function avoids busy-waiting
+//! let config = stack.dhcp_acquire(30_000, get_system_time_ms, Some(sleep_ms))
 //!     .expect("Failed to acquire DHCP configuration");
 //!
 //! println!("Successfully configured:");

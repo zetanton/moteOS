@@ -6,6 +6,19 @@ This document describes the DHCP (Dynamic Host Configuration Protocol) client im
 
 The DHCP client provides automatic IP address configuration for network interfaces. It implements the standard DHCP 4-way handshake to acquire IP configuration from a DHCP server.
 
+### Design Notes
+
+**Subnet Mask Representation**: The implementation uses `prefix_len: u8` (CIDR notation, e.g., 24 for /24) instead of `subnet_mask: Ipv4Address` (e.g., 255.255.255.0) as mentioned in the specification. This is intentional and aligns with:
+- Modern networking practices (CIDR is standard)
+- smoltcp's API which uses prefix length
+- More compact representation (1 byte vs 4 bytes)
+- Easier validation and manipulation
+
+The two formats are equivalent:
+- `prefix_len: 24` = `subnet_mask: 255.255.255.0` (/24)
+- `prefix_len: 16` = `subnet_mask: 255.255.0.0` (/16)
+- `prefix_len: 8` = `subnet_mask: 255.0.0.0` (/8)
+
 ## Implementation Details
 
 ### Architecture
@@ -90,10 +103,17 @@ loop {
     }
 }
 
-// Method 2: Convenience method with timeout
-// Provide a function to get current system time in milliseconds
-let config = stack.dhcp_acquire(30_000, || timer::get_ticks_ms())?;
+// Method 2: Convenience method with timeout (recommended)
+// Provide time source and sleep function to avoid CPU spin
+let config = stack.dhcp_acquire(
+    30_000,
+    || timer::get_ticks_ms(),
+    Some(|ms| timer::sleep_ms(ms))
+)?;
 // Configuration is automatically applied
+
+// Method 3: Without sleep (spin-wait, higher CPU usage)
+let config = stack.dhcp_acquire(30_000, || timer::get_ticks_ms(), None)?;
 ```
 
 ### Checking DHCP State
@@ -158,6 +178,7 @@ DHCP-specific errors:
 - **Lease Renewal**: smoltcp handles automatic lease renewal
 - **Memory**: DHCP socket uses ~1KB of memory
 - **Timing**: The `dhcp_acquire()` method requires a function that returns current time in milliseconds. This should read from the system timer (HPET, TSC, or ARM Generic Timer)
+- **Sleep Function**: Optionally provide a sleep function to `dhcp_acquire()` to avoid busy-waiting. Without it, the method uses a compiler fence (minimal CPU hint) but will still consume significant CPU
 
 ## Testing
 

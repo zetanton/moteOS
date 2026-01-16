@@ -286,30 +286,53 @@ impl NetworkStack {
     /// 2. Polls until configuration is acquired (with timeout)
     /// 3. Applies the configuration to the interface
     ///
-    /// **Note**: This method is blocking and will spin-wait until DHCP completes
-    /// or timeout occurs. The caller must provide accurate timestamps on each call
-    /// to poll(). For non-blocking operation, use start_dhcp() + poll() + dhcp_config().
+    /// **Note**: This method blocks until DHCP completes or timeout occurs.
+    /// The caller must provide a time source and optionally a sleep function
+    /// to avoid busy-waiting. For non-blocking operation, use start_dhcp() +
+    /// poll() + dhcp_config().
     ///
     /// # Arguments
     /// * `timeout_ms` - Maximum time to wait for DHCP in milliseconds
     /// * `get_time_ms` - Function to get current time in milliseconds
+    /// * `sleep_ms` - Optional function to sleep/yield (to avoid 100% CPU usage)
     ///
     /// # Returns
     /// * `Ok(IpConfig)` - Successfully acquired configuration
     /// * `Err(NetError)` - Failed to acquire configuration or timeout
     ///
-    /// # Example
+    /// # Examples
+    ///
+    /// With sleep function (recommended):
+    /// ```no_run
+    /// # use network::{NetworkStack, IpConfig};
+    /// # fn get_system_time_ms() -> i64 { 0 }
+    /// # fn sleep_ms(ms: i64) {}
+    /// # let mut stack: NetworkStack = todo!();
+    /// let config = stack.dhcp_acquire(
+    ///     30_000,
+    ///     get_system_time_ms,
+    ///     Some(sleep_ms)
+    /// )?;
+    /// # Ok::<(), network::NetError>(())
+    /// ```
+    ///
+    /// Without sleep (spin-wait, high CPU usage):
     /// ```no_run
     /// # use network::{NetworkStack, IpConfig};
     /// # fn get_system_time_ms() -> i64 { 0 }
     /// # let mut stack: NetworkStack = todo!();
-    /// // Acquire DHCP with 30 second timeout
-    /// let config = stack.dhcp_acquire(30_000, get_system_time_ms)?;
+    /// let config = stack.dhcp_acquire(30_000, get_system_time_ms, None)?;
     /// # Ok::<(), network::NetError>(())
     /// ```
-    pub fn dhcp_acquire<F>(&mut self, timeout_ms: i64, mut get_time_ms: F) -> Result<IpConfig, NetError>
+    pub fn dhcp_acquire<F, S>(
+        &mut self,
+        timeout_ms: i64,
+        mut get_time_ms: F,
+        mut sleep_ms: Option<S>,
+    ) -> Result<IpConfig, NetError>
     where
         F: FnMut() -> i64,
+        S: FnMut(i64),
     {
         // Start DHCP if not already running
         self.start_dhcp()?;
@@ -337,9 +360,15 @@ impl NetworkStack {
                 ));
             }
 
-            // Small yield to avoid 100% CPU usage
-            // In a real OS, this would be a proper sleep/yield
-            // For now, just continue polling
+            // Sleep/yield to avoid 100% CPU usage
+            // Recommended: 10ms between polls for responsive DHCP
+            if let Some(ref mut sleep_fn) = sleep_ms {
+                sleep_fn(10);
+            } else {
+                // If no sleep function provided, use a minimal CPU hint
+                // This is a compiler fence to prevent over-optimization
+                core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+            }
         }
     }
 
