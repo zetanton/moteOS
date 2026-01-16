@@ -1,3 +1,5 @@
+#![no_std]
+
 // EFI variable storage implementation
 // Stores configuration in EFI variables for persistence across reboots
 
@@ -35,9 +37,23 @@ const MOTEOS_VENDOR_GUID: uefi::Guid = uefi::Guid::from_fields(
 /// 
 /// The configuration is stored as a TOML string in the EFI variable "MoteOS-Config"
 /// with a custom vendor GUID.
+/// 
+/// # System Table Lifetime
+/// 
+/// The `system_table` reference is stored as `&'static` because:
+/// - During boot services: The system table is valid and provides access to runtime services
+/// - After `exit_boot_services()`: Boot services are invalidated, but runtime services
+///   remain accessible through the system table pointer. The UEFI specification guarantees
+///   that runtime services continue to work after exit_boot_services().
+/// 
+/// Runtime services (including variable access) are designed to work after boot services
+/// exit, so this implementation is safe for use both before and after exit_boot_services().
 pub struct EfiConfigStorage {
-    /// System table reference (only valid during boot services)
-    /// After exit_boot_services, we use runtime services
+    /// System table reference
+    /// 
+    /// This remains valid after `exit_boot_services()` because runtime services
+    /// continue to function. The pointer itself is stable and runtime services
+    /// are accessible throughout the kernel's lifetime.
     system_table: Option<&'static SystemTable<Runtime>>,
 }
 

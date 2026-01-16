@@ -39,6 +39,10 @@ impl ConfigError {
         ConfigError::SerializationError(String::from(msg))
     }
 
+    pub fn deserialization_error(msg: &str) -> Self {
+        ConfigError::DeserializationError(String::from(msg))
+    }
+
     pub fn efi_error(msg: &str) -> Self {
         ConfigError::EfiError(String::from(msg))
     }
