@@ -1,5 +1,9 @@
+#![no_std]
+
 // smoltcp network stack integration
 // Provides TCP/IP networking using the smoltcp library
+
+extern crate alloc;
 
 use crate::drivers::NetworkDriver;
 use crate::error::NetError;
@@ -14,15 +18,11 @@ use spin::Mutex;
 /// Device wrapper that adapts our NetworkDriver trait to smoltcp's Device trait
 struct DeviceWrapper {
     driver: Box<dyn NetworkDriver>,
-    rx_buffer: Option<Vec<u8>>,
 }
 
 impl DeviceWrapper {
     fn new(driver: Box<dyn NetworkDriver>) -> Self {
-        Self {
-            driver,
-            rx_buffer: None,
-        }
+        Self { driver }
     }
 }
 
