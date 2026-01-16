@@ -7,3 +7,8 @@ edition.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+# Workspace dependencies
+uefi = { workspace = true }
+x86_64 = { workspace = true }
+linked_list_allocator = { workspace = true }
+spin = { workspace = true }
