@@ -6,6 +6,7 @@
 extern crate alloc;
 
 use crate::dhcp::{self, DhcpState, IpConfig};
+use crate::dns::{self, DnsResponse, ResponseCode};
 use crate::drivers::NetworkDriver;
 use crate::error::NetError;
 use alloc::boxed::Box;
@@ -13,8 +14,9 @@ use alloc::vec::Vec;
 use smoltcp::iface::{Config, Interface, Route, SocketSet};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::socket::dhcpv4::{self, Socket as DhcpSocket};
+use smoltcp::socket::udp::{self, PacketMetadata, Socket as UdpSocket, UdpMetadata};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv4Cidr};
+use smoltcp::wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
 use spin::Mutex;
 
 /// Device wrapper that adapts our NetworkDriver trait to smoltcp's Device trait
@@ -423,6 +425,190 @@ impl NetworkStack {
         if let Some(handle) = self.dhcp_handle.take() {
             self.sockets.remove(handle);
         }
+    }
+
+    /// Resolve a hostname to an IPv4 address using DNS
+    ///
+    /// This method creates a UDP socket, sends a DNS query to the specified
+    /// DNS server, and waits for a response.
+    ///
+    /// **Note**: This method blocks until DNS resolution completes or timeout occurs.
+    /// The caller must provide a time source and optionally a sleep function
+    /// to avoid busy-waiting.
+    ///
+    /// # Arguments
+    /// * `hostname` - Domain name to resolve (e.g., "example.com")
+    /// * `dns_server` - DNS server IP address (e.g., 8.8.8.8 or from DHCP)
+    /// * `timeout_ms` - Maximum time to wait for DNS response in milliseconds
+    /// * `get_time_ms` - Function to get current time in milliseconds
+    /// * `sleep_ms` - Optional function to sleep/yield (to avoid 100% CPU usage)
+    ///
+    /// # Returns
+    /// * `Ok(Ipv4Address)` - Successfully resolved IP address
+    /// * `Err(NetError)` - Failed to resolve or timeout
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use network::{NetworkStack, IpConfig};
+    /// # use smoltcp::wire::Ipv4Address;
+    /// # fn get_system_time_ms() -> i64 { 0 }
+    /// # fn sleep_ms(ms: i64) {}
+    /// # let mut stack: NetworkStack = todo!();
+    /// let dns_server = Ipv4Address::new(8, 8, 8, 8);
+    /// let ip = stack.dns_resolve(
+    ///     "example.com",
+    ///     dns_server,
+    ///     5000,
+    ///     get_system_time_ms,
+    ///     Some(sleep_ms)
+    /// )?;
+    /// # Ok::<(), network::NetError>(())
+    /// ```
+    pub fn dns_resolve<F, S>(
+        &mut self,
+        hostname: &str,
+        dns_server: Ipv4Address,
+        timeout_ms: i64,
+        mut get_time_ms: F,
+        mut sleep_ms: Option<S>,
+    ) -> Result<Ipv4Address, NetError>
+    where
+        F: FnMut() -> i64,
+        S: FnMut(i64),
+    {
+        // Generate a transaction ID (use current time as pseudo-random)
+        let transaction_id = (get_time_ms() & 0xFFFF) as u16;
+
+        // Build DNS query packet
+        let query = dns::build_query(hostname, transaction_id);
+
+        // Create UDP socket with buffers
+        let rx_buffer = udp::PacketBuffer::new(
+            Vec::from([PacketMetadata::EMPTY; 4]),
+            vec![0u8; 1024],
+        );
+        let tx_buffer = udp::PacketBuffer::new(
+            Vec::from([PacketMetadata::EMPTY; 4]),
+            vec![0u8; 1024],
+        );
+
+        let mut udp_socket = UdpSocket::new(rx_buffer, tx_buffer);
+
+        // Bind to an ephemeral port (use transaction_id as source port for simplicity)
+        let local_port = 49152 + (transaction_id % 16384);
+        let bind_endpoint = IpEndpoint::new(IpAddress::Unspecified, local_port);
+
+        if udp_socket.bind(bind_endpoint).is_err() {
+            return Err(NetError::DnsError("Failed to bind UDP socket".into()));
+        }
+
+        // Add socket to socket set
+        let udp_handle = self.sockets.add(udp_socket);
+
+        let start_time = get_time_ms();
+        let mut query_sent = false;
+
+        // DNS resolution loop
+        let result = loop {
+            let current_time = get_time_ms();
+
+            // Poll the network stack
+            self.poll(current_time)?;
+
+            // Get the UDP socket
+            let udp_socket = self.sockets.get_mut::<UdpSocket>(udp_handle);
+
+            // Send DNS query if not sent yet
+            if !query_sent && udp_socket.can_send() {
+                let dns_endpoint = IpEndpoint::new(IpAddress::Ipv4(dns_server), 53);
+
+                match udp_socket.send_slice(&query, dns_endpoint) {
+                    Ok(()) => {
+                        query_sent = true;
+                    }
+                    Err(_) => {
+                        break Err(NetError::DnsError("Failed to send DNS query".into()));
+                    }
+                }
+            }
+
+            // Check for DNS response
+            if query_sent && udp_socket.can_recv() {
+                match udp_socket.recv() {
+                    Ok((data, _endpoint)) => {
+                        // Parse DNS response
+                        match DnsResponse::from_bytes(data) {
+                            Ok(response) => {
+                                // Verify transaction ID matches
+                                if response.header.id != transaction_id {
+                                    // Wrong transaction ID, continue waiting
+                                    continue;
+                                }
+
+                                // Check response code
+                                let rcode = response.header.rcode();
+                                if let Some(response_code) = ResponseCode::from_u8(rcode) {
+                                    match response_code {
+                                        ResponseCode::NoError => {
+                                            // Extract IP address from response
+                                            if let Some(ip_bytes) = response.first_ipv4() {
+                                                let ip = Ipv4Address::from_bytes(&ip_bytes);
+                                                break Ok(ip);
+                                            } else {
+                                                break Err(NetError::DnsError(
+                                                    "No A record in response".into(),
+                                                ));
+                                            }
+                                        }
+                                        ResponseCode::NameError => {
+                                            break Err(NetError::DnsNameNotFound);
+                                        }
+                                        ResponseCode::ServerFailure => {
+                                            break Err(NetError::DnsServerFailure);
+                                        }
+                                        _ => {
+                                            break Err(NetError::DnsError(format!(
+                                                "DNS error code: {:?}",
+                                                response_code
+                                            )));
+                                        }
+                                    }
+                                } else {
+                                    break Err(NetError::DnsMalformedResponse(
+                                        "Invalid response code".into(),
+                                    ));
+                                }
+                            }
+                            Err(e) => {
+                                break Err(NetError::DnsMalformedResponse(e.into()));
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // No data available yet, continue
+                    }
+                }
+            }
+
+            // Check for timeout
+            if current_time - start_time > timeout_ms {
+                break Err(NetError::DnsTimeout);
+            }
+
+            // Sleep/yield to avoid 100% CPU usage
+            if let Some(ref mut sleep_fn) = sleep_ms {
+                sleep_fn(10);
+            } else {
+                // Compiler fence to prevent over-optimization
+                core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+            }
+        };
+
+        // Clean up: remove UDP socket from socket set
+        self.sockets.remove(udp_handle);
+
+        result
     }
 }
 
