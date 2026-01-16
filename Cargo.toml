@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "boot",
+    "shared",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+# Common dependencies will be added here as needed
