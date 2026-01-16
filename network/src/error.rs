@@ -43,4 +43,19 @@ pub enum NetError {
 
     #[error("DHCP not configured")]
     DhcpNotConfigured,
+
+    #[error("DNS error: {0}")]
+    DnsError(String),
+
+    #[error("DNS timeout")]
+    DnsTimeout,
+
+    #[error("DNS malformed response: {0}")]
+    DnsMalformedResponse(String),
+
+    #[error("DNS name not found")]
+    DnsNameNotFound,
+
+    #[error("DNS server failure")]
+    DnsServerFailure,
 }
