@@ -2,7 +2,52 @@
 //!
 //! Provides a state machine-based wizard for configuring network settings
 //! and API keys during initial setup.
+//!
+//! # Architecture
+//!
+//! This module implements an event-driven state machine that decouples the wizard
+//! logic from the UI rendering and network operations. The wizard emits events
+//! (via `WizardEvent`) that the caller must handle:
+//!
+//! - `RequestWifiScan` - Caller should scan for WiFi networks and call `set_wifi_networks()`
+//! - `RequestWifiConnect` - Caller should connect to WiFi with provided credentials
+//! - `ConfigReady` - Caller should save the configuration (e.g., to EFI variables)
+//! - `Complete` - Wizard finished successfully
+//!
+//! The wizard does NOT directly render UI or save configuration. This is the
+//! responsibility of the caller (typically the TUI layer and kernel integration code).
+//!
+//! # Usage Example
+//!
+//! ```ignore
+//! let mut wizard = SetupWizard::new();
+//!
+//! loop {
+//!     // Render current state (caller's responsibility)
+//!     render_wizard_state(wizard.state());
+//!
+//!     // Get keyboard input
+//!     let key = read_keyboard();
+//!
+//!     // Handle input
+//!     match wizard.handle_input(key) {
+//!         WizardEvent::RequestWifiScan => {
+//!             let networks = scan_wifi();
+//!             wizard.set_wifi_networks(networks);
+//!         }
+//!         WizardEvent::RequestWifiConnect { ssid, password } => {
+//!             connect_wifi(&ssid, &password);
+//!         }
+//!         WizardEvent::ConfigReady(config) => {
+//!             storage.save(&config)?;
+//!         }
+//!         WizardEvent::Complete => break,
+//!         _ => {}
+//!     }
+//! }
+//! ```
 
+#![no_std]
 #![allow(unused)]
 
 extern crate alloc;

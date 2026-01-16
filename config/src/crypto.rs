@@ -2,7 +2,16 @@
 //!
 //! Provides AES-256-GCM encryption for storing API keys securely.
 //! Uses a hardware-derived key when available, falling back to a static key.
+//!
+//! # Security Notice
+//!
+//! **WARNING**: The current implementation uses placeholder encryption that is NOT SECURE.
+//! This is intentional for initial development and compilation testing only.
+//!
+//! Before production use, this module MUST be updated to implement proper AES-256-GCM
+//! encryption using the `aes-gcm` crate and secure key derivation.
 
+#![no_std]
 #![allow(unused)]
 
 extern crate alloc;
