@@ -48,14 +48,13 @@
 //! ```
 
 #![no_std]
-#![allow(unused)]
 
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::types::{MoteConfig, WifiNetwork, ConnectionType};
-use crate::error::ConfigError;
+use crate::types::{MoteConfig, WifiNetwork, ConnectionType, ProviderConfig};
+use crate::crypto;
 
 /// Setup wizard state machine
 #[derive(Debug)]
@@ -413,20 +412,61 @@ impl SetupWizard {
                 WizardEvent::None
             }
             Key::Enter => {
-                // Save API key (will be encrypted later)
-                // For now, just store it in plaintext in memory
-                // The encryption module will handle this
+                // Get the API key from input buffer
                 let api_key = self.input_buffer.clone();
 
-                // Store based on provider (simplified for now)
-                // TODO: Encrypt with crypto module
+                // Encrypt the API key
+                match crypto::encrypt_api_key(&api_key) {
+                    Ok(encrypted_key) => {
+                        // Determine default model for the provider
+                        let default_model = match self.current_provider {
+                            ApiKeyProvider::OpenAI => "gpt-4o",
+                            ApiKeyProvider::Anthropic => "claude-sonnet-4-20250514",
+                            ApiKeyProvider::Groq => "llama-3.3-70b-versatile",
+                            ApiKeyProvider::XAI => "grok-2",
+                            ApiKeyProvider::Skip => "",
+                        };
 
-                // Move to ready state
-                self.state = WizardState::Ready {
-                    config: self.config.clone()
-                };
-                self.input_buffer.clear();
-                self.cursor_pos = 0;
+                        // Store encrypted API key in config
+                        let provider_config = ProviderConfig {
+                            api_key_encrypted: encrypted_key,
+                            default_model: String::from(default_model),
+                        };
+
+                        match self.current_provider {
+                            ApiKeyProvider::OpenAI => {
+                                self.config.providers.openai = Some(provider_config);
+                            }
+                            ApiKeyProvider::Anthropic => {
+                                self.config.providers.anthropic = Some(provider_config);
+                            }
+                            ApiKeyProvider::Groq => {
+                                self.config.providers.groq = Some(provider_config);
+                            }
+                            ApiKeyProvider::XAI => {
+                                self.config.providers.xai = Some(provider_config);
+                            }
+                            ApiKeyProvider::Skip => {}
+                        }
+
+                        // Clear sensitive data from input buffer
+                        self.input_buffer.clear();
+                        self.cursor_pos = 0;
+
+                        // Move to ready state
+                        self.state = WizardState::Ready {
+                            config: self.config.clone()
+                        };
+                    }
+                    Err(_) => {
+                        // Encryption failed - stay in current state
+                        // The UI should show an error message
+                        // For now, just clear the input and stay here
+                        self.input_buffer.clear();
+                        self.cursor_pos = 0;
+                    }
+                }
+
                 WizardEvent::None
             }
             Key::Esc => {
