@@ -12,7 +12,6 @@
 //! encryption using the `aes-gcm` crate and secure key derivation.
 
 #![no_std]
-#![allow(unused)]
 
 extern crate alloc;
 use alloc::vec::Vec;

@@ -3,7 +3,6 @@
 //! Defines the main configuration structures used throughout the system.
 
 #![no_std]
-#![allow(unused)]
 
 extern crate alloc;
 use alloc::string::String;
