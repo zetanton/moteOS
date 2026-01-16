@@ -6,7 +6,6 @@ members = [
     "inference",
     "config",
     "shared",
-    "font",
 ]
 
 resolver = "2"
