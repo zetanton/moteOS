@@ -162,9 +162,31 @@ impl Virtqueue {
     }
     
     /// Add a buffer to the queue
+    /// 
+    /// # Arguments
+    /// * `addr` - Physical address of the buffer
+    /// * `len` - Length of the buffer
+    /// * `flags` - Descriptor flags
+    /// 
+    /// # Returns
+    /// The descriptor index on success
+    /// 
+    /// # Errors
+    /// Returns `NetError::QueueError` if the queue is full
     unsafe fn add_buffer(&mut self, addr: u64, len: u32, flags: u16) -> Result<u16, NetError> {
         if self.next_free >= self.size {
-            return Err(NetError::QueueError("Queue full".to_string()));
+            return Err(NetError::QueueError(format!(
+                "Queue full: next_free={}, size={}",
+                self.next_free, self.size
+            )));
+        }
+        
+        if addr == 0 {
+            return Err(NetError::QueueError("Invalid buffer address (null)".to_string()));
+        }
+        
+        if len == 0 {
+            return Err(NetError::QueueError("Invalid buffer length (zero)".to_string()));
         }
         
         let idx = self.next_free;
@@ -214,6 +236,30 @@ impl Virtqueue {
     }
 }
 
+/// RX buffer information
+struct RxBuffer {
+    /// Physical address
+    phys: u64,
+    /// Virtual address
+    ptr: *mut u8,
+    /// Buffer size
+    size: usize,
+    /// Descriptor index in the queue
+    desc_idx: u16,
+}
+
+/// TX buffer information
+struct TxBuffer {
+    /// Physical address
+    phys: u64,
+    /// Virtual address
+    ptr: *mut u8,
+    /// Buffer size
+    size: usize,
+    /// Descriptor index in the queue
+    desc_idx: u16,
+}
+
 /// virtio-net driver
 pub struct VirtioNet {
     /// PCI device information
@@ -228,10 +274,10 @@ pub struct VirtioNet {
     rx_queue: Option<Virtqueue>,
     /// Transmit queue
     tx_queue: Option<Virtqueue>,
-    /// RX buffer pool
-    rx_buffers: alloc::vec::Vec<(u64, *mut u8, usize)>,
-    /// TX buffer pool
-    tx_buffers: alloc::vec::Vec<(u64, *mut u8, usize)>,
+    /// RX buffer pool with descriptor mapping
+    rx_buffers: alloc::vec::Vec<RxBuffer>,
+    /// TX buffer pool with descriptor mapping
+    tx_buffers: alloc::vec::Vec<TxBuffer>,
     /// Initialized flag
     initialized: bool,
 }
@@ -371,18 +417,39 @@ impl VirtioNet {
     }
     
     /// Setup a virtqueue
+    /// 
+    /// # Errors
+    /// Returns `NetError::QueueError` if queue setup fails
     unsafe fn setup_queue(&mut self, queue_index: u16, queue: &Virtqueue) -> Result<(), NetError> {
+        if queue.desc.is_null() {
+            return Err(NetError::QueueError("Queue descriptor table is null".to_string()));
+        }
+        
         // Select queue
         self.write_u16(VIRTIO_PCI_QUEUE_SEL, queue_index);
         
         // Set queue size
+        if queue.size == 0 {
+            return Err(NetError::QueueError("Queue size is zero".to_string()));
+        }
         self.write_u16(VIRTIO_PCI_QUEUE_NUM, queue.size);
         
         // Get physical address of queue
         let queue_phys = self.virt_to_phys(queue.desc as usize);
+        if queue_phys == 0 {
+            return Err(NetError::QueueError("Failed to get physical address of queue".to_string()));
+        }
+        
+        // Verify alignment (must be page-aligned)
+        if (queue_phys & 0xFFF) != 0 {
+            return Err(NetError::QueueError("Queue not page-aligned".to_string()));
+        }
         
         // Set queue address (PFN = physical frame number)
         let pfn = queue_phys >> 12;  // Page frame number
+        if pfn == 0 {
+            return Err(NetError::QueueError("Invalid page frame number".to_string()));
+        }
         self.write_u32(VIRTIO_PCI_QUEUE_PFN, pfn as u32);
         
         Ok(())
@@ -395,32 +462,45 @@ impl VirtioNet {
         const BUFFER_SIZE: usize = 1526;
         const NUM_BUFFERS: usize = 32;
         
-        for _ in 0..NUM_BUFFERS {
-            let layout = core::alloc::Layout::from_size_align(BUFFER_SIZE, 16)
-                .map_err(|_| NetError::QueueError("Invalid buffer layout".to_string()))?;
-            
-            unsafe {
-                let ptr = alloc::alloc::alloc_zeroed(layout);
-                if ptr.is_null() {
-                    return Err(NetError::QueueError("Failed to allocate RX buffer".to_string()));
-                }
+        if let Some(ref mut rx_queue) = self.rx_queue {
+            for _ in 0..NUM_BUFFERS {
+                let layout = core::alloc::Layout::from_size_align(BUFFER_SIZE, 16)
+                    .map_err(|_| NetError::QueueError("Invalid buffer layout".to_string()))?;
                 
-                let phys = self.virt_to_phys(ptr as usize);
-                self.rx_buffers.push((phys, ptr, BUFFER_SIZE));
-                
-                // Add buffer to RX queue
-                if let Some(ref mut rx_queue) = self.rx_queue {
-                    let idx = rx_queue.add_buffer(phys, BUFFER_SIZE as u32, VIRTQ_DESC_F_WRITE)?;
-                    rx_queue.pending.push(idx);
+                unsafe {
+                    let ptr = alloc::alloc::alloc_zeroed(layout);
+                    if ptr.is_null() {
+                        return Err(NetError::QueueError("Failed to allocate RX buffer".to_string()));
+                    }
+                    
+                    let phys = self.virt_to_phys(ptr as usize);
+                    
+                    // Add buffer to RX queue and get descriptor index
+                    let desc_idx = rx_queue.add_buffer(phys, BUFFER_SIZE as u32, VIRTQ_DESC_F_WRITE)
+                        .map_err(|e| {
+                            // Clean up on error
+                            alloc::alloc::dealloc(ptr, layout);
+                            e
+                        })?;
+                    
+                    // Store buffer with descriptor mapping
+                    self.rx_buffers.push(RxBuffer {
+                        phys,
+                        ptr,
+                        size: BUFFER_SIZE,
+                        desc_idx,
+                    });
+                    
+                    rx_queue.pending.push(desc_idx);
                 }
             }
-        }
-        
-        // Notify device about RX buffers
-        if let Some(ref mut rx_queue) = self.rx_queue {
+            
+            // Notify device about RX buffers
             unsafe {
                 rx_queue.notify(VIRTIO_NET_RX_QUEUE, self.io_base);
             }
+        } else {
+            return Err(NetError::QueueError("RX queue not initialized".to_string()));
         }
         
         Ok(())
@@ -484,28 +564,44 @@ impl VirtioNet {
     /// 
     /// This should be called from the interrupt handler when a virtio-net interrupt occurs.
     /// It processes received packets and handles transmission completion.
+    /// 
+    /// # Errors
+    /// Returns `NetError` if interrupt handling fails
     pub fn handle_interrupt(&mut self) -> Result<(), NetError> {
         if !self.initialized {
             return Err(NetError::DeviceNotInitialized);
         }
         
         // Check for received packets
+        // Note: The actual packet data retrieval is done in receive() method
+        // This just acknowledges that packets are available
         if let Some(ref mut rx_queue) = self.rx_queue {
             unsafe {
-                while let Some((id, len)) = rx_queue.get_used() {
-                    // Process received packet
-                    // The actual packet data will be retrieved in the receive() method
-                }
+                // Check if there are any used buffers (packets received)
+                // The actual processing happens in receive() method
+                let _ = rx_queue.get_used();
             }
         }
         
-        // Check for transmitted packets
+        // Check for transmitted packets and free buffers
         if let Some(ref mut tx_queue) = self.tx_queue {
             unsafe {
-                while let Some((id, _len)) = tx_queue.get_used() {
-                    // Free transmitted buffer
-                    if let Some(pos) = tx_queue.pending.iter().position(|&x| x == id as u16) {
-                        tx_queue.pending.remove(pos);
+                while let Some((used_id, _len)) = tx_queue.get_used() {
+                    let desc_id = used_id as u16;
+                    
+                    // Remove from pending list
+                    if let Some(pending_pos) = tx_queue.pending.iter().position(|&x| x == desc_id) {
+                        tx_queue.pending.remove(pending_pos);
+                    }
+                    
+                    // Find and free the buffer
+                    if let Some(buf_pos) = self.tx_buffers.iter().position(|buf| buf.desc_idx == desc_id) {
+                        let buffer = self.tx_buffers.remove(buf_pos);
+                        
+                        // Deallocate the buffer
+                        let layout = core::alloc::Layout::from_size_align(buffer.size, 16)
+                            .map_err(|_| NetError::QueueError("Invalid TX buffer layout for deallocation".to_string()))?;
+                        alloc::alloc::dealloc(buffer.ptr, layout);
                     }
                 }
             }
@@ -530,6 +626,10 @@ impl NetworkDriver for VirtioNet {
             return Err(NetError::InvalidPacket("Packet too large".to_string()));
         }
         
+        if packet.is_empty() {
+            return Err(NetError::InvalidPacket("Packet is empty".to_string()));
+        }
+        
         // Allocate buffer for TX
         let layout = core::alloc::Layout::from_size_align(packet.len(), 16)
             .map_err(|_| NetError::QueueError("Invalid TX buffer layout".to_string()))?;
@@ -547,15 +647,30 @@ impl NetworkDriver for VirtioNet {
             
             // Add to TX queue
             if let Some(ref mut tx_queue) = self.tx_queue {
-                let idx = tx_queue.add_buffer(phys, packet.len() as u32, 0)?;
-                tx_queue.pending.push(idx);
+                let desc_idx = tx_queue.add_buffer(phys, packet.len() as u32, 0)
+                    .map_err(|e| {
+                        // Clean up on error
+                        alloc::alloc::dealloc(tx_buf, layout);
+                        e
+                    })?;
+                
+                tx_queue.pending.push(desc_idx);
+                
+                // Store buffer info with descriptor mapping for later cleanup
+                self.tx_buffers.push(TxBuffer {
+                    phys,
+                    ptr: tx_buf,
+                    size: packet.len(),
+                    desc_idx,
+                });
                 
                 // Notify device
                 tx_queue.notify(VIRTIO_NET_TX_QUEUE, self.io_base);
+            } else {
+                // Clean up on error
+                alloc::alloc::dealloc(tx_buf, layout);
+                return Err(NetError::QueueError("TX queue not initialized".to_string()));
             }
-            
-            // Store buffer info for later cleanup
-            self.tx_buffers.push((phys, tx_buf, packet.len()));
         }
         
         Ok(())
@@ -569,24 +684,51 @@ impl NetworkDriver for VirtioNet {
         // Check for used buffers in RX queue
         if let Some(ref mut rx_queue) = self.rx_queue {
             unsafe {
-                if let Some((id, len)) = rx_queue.get_used() {
-                    // Find the buffer
-                    for (i, (phys, ptr, size)) in self.rx_buffers.iter().enumerate() {
-                        if let Some(desc_idx) = rx_queue.pending.iter().position(|&x| x == id as u16) {
-                            // Read packet
-                            let mut packet = alloc::vec::Vec::with_capacity(len as usize);
-                            packet.set_len(len as usize);
-                            ptr::copy_nonoverlapping(*ptr, packet.as_mut_ptr(), len as usize);
-                            
-                            // Re-add buffer to queue
-                            rx_queue.pending.remove(desc_idx);
-                            let new_idx = rx_queue.add_buffer(*phys, *size as u32, VIRTQ_DESC_F_WRITE)?;
-                            rx_queue.pending.push(new_idx);
-                            rx_queue.notify(VIRTIO_NET_RX_QUEUE, self.io_base);
-                            
-                            return Ok(Some(packet));
-                        }
+                if let Some((used_id, len)) = rx_queue.get_used() {
+                    let desc_id = used_id as u16;
+                    
+                    // Find the buffer that corresponds to this descriptor ID
+                    let buffer_idx = self.rx_buffers.iter()
+                        .position(|buf| buf.desc_idx == desc_id)
+                        .ok_or_else(|| NetError::QueueError("Descriptor ID not found in buffers".to_string()))?;
+                    
+                    let buffer = &self.rx_buffers[buffer_idx];
+                    
+                    // Validate length
+                    if len as usize > buffer.size {
+                        return Err(NetError::InvalidPacket("Received packet exceeds buffer size".to_string()));
                     }
+                    
+                    // Create packet vector safely
+                    // Allocate uninitialized memory, then immediately copy valid data
+                    let mut packet = alloc::vec::Vec::with_capacity(len as usize);
+                    unsafe {
+                        // Safety: set_len() is safe here because:
+                        // 1. We set the length to exactly the amount we'll copy
+                        // 2. We immediately copy valid data from buffer.ptr into the vector
+                        // 3. The buffer.ptr is guaranteed to be valid (allocated in allocate_rx_buffers)
+                        // 4. len is validated to be <= buffer.size above
+                        packet.set_len(len as usize);
+                        ptr::copy_nonoverlapping(buffer.ptr, packet.as_mut_ptr(), len as usize);
+                    }
+                    
+                    // Re-add buffer to queue with new descriptor index
+                    let new_desc_idx = rx_queue.add_buffer(buffer.phys, buffer.size as u32, VIRTQ_DESC_F_WRITE)
+                        .map_err(|e| NetError::QueueError(format!("Failed to re-add RX buffer: {:?}", e)))?;
+                    
+                    // Update buffer descriptor mapping
+                    self.rx_buffers[buffer_idx].desc_idx = new_desc_idx;
+                    
+                    // Remove old descriptor from pending and add new one
+                    if let Some(pending_idx) = rx_queue.pending.iter().position(|&x| x == desc_id) {
+                        rx_queue.pending.remove(pending_idx);
+                    }
+                    rx_queue.pending.push(new_desc_idx);
+                    
+                    // Notify device about the new buffer
+                    rx_queue.notify(VIRTIO_NET_RX_QUEUE, self.io_base);
+                    
+                    return Ok(Some(packet));
                 }
             }
         }
@@ -619,21 +761,26 @@ impl NetworkDriver for VirtioNet {
         // Check for used TX buffers (packets that were sent)
         if let Some(ref mut tx_queue) = self.tx_queue {
             unsafe {
-                while let Some((id, _len)) = tx_queue.get_used() {
-                    // Find and free the buffer
-                    if let Some(pos) = tx_queue.pending.iter().position(|&x| x == id as u16) {
-                        tx_queue.pending.remove(pos);
+                while let Some((used_id, _len)) = tx_queue.get_used() {
+                    let desc_id = used_id as u16;
+                    
+                    // Remove from pending list
+                    if let Some(pending_pos) = tx_queue.pending.iter().position(|&x| x == desc_id) {
+                        tx_queue.pending.remove(pending_pos);
+                    }
+                    
+                    // Find and free the buffer using descriptor ID mapping
+                    if let Some(buf_pos) = self.tx_buffers.iter().position(|buf| buf.desc_idx == desc_id) {
+                        let buffer = self.tx_buffers.remove(buf_pos);
                         
-                        // Find and free the buffer
-                        if let Some(buf_pos) = self.tx_buffers.iter().position(|(phys, _, _)| {
-                            // Match by checking if this buffer was used
-                            true  // Simplified - would need proper tracking
-                        }) {
-                            let (_, ptr, size) = self.tx_buffers.remove(buf_pos);
-                            let layout = core::alloc::Layout::from_size_align(size, 16)
-                                .map_err(|_| NetError::QueueError("Invalid layout".to_string()))?;
-                            alloc::alloc::dealloc(ptr, layout);
-                        }
+                        // Deallocate the buffer
+                        let layout = core::alloc::Layout::from_size_align(buffer.size, 16)
+                            .map_err(|_| NetError::QueueError("Invalid TX buffer layout for deallocation".to_string()))?;
+                        alloc::alloc::dealloc(buffer.ptr, layout);
+                    } else {
+                        // Descriptor ID not found in buffers - this is an error condition
+                        // Log it but don't fail the poll operation
+                        // In a production system, this would be logged
                     }
                 }
             }
