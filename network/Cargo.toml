@@ -1,0 +1,17 @@
+[package]
+name = "network"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# Workspace dependencies
+spin = { workspace = true }
+thiserror = { workspace = true }
+smoltcp = { workspace = true }
+x86_64 = { workspace = true }
+
+# For virtio
+volatile = "0.5"
