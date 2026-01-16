@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "boot",
+    "network",
     "llm",
     "inference",
     "config",
