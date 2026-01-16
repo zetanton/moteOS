@@ -11,7 +11,7 @@ pub mod framebuffer;
 pub mod timer;
 
 // Re-export commonly used types
-pub use framebuffer::{FramebufferInfo, PixelFormat};
+pub use framebuffer::{Color, FramebufferInfo, PixelFormat, Point, Rect};
 pub use memory::{MemoryKind, MemoryMap, MemoryRegion};
 
 /// Boot information passed to kernel_main
