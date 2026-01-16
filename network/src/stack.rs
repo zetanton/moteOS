@@ -5,14 +5,16 @@
 
 extern crate alloc;
 
+use crate::dhcp::{self, DhcpState, IpConfig};
 use crate::drivers::NetworkDriver;
 use crate::error::NetError;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use smoltcp::iface::{Config, Interface, SocketSet};
+use smoltcp::iface::{Config, Interface, Route, SocketSet};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
+use smoltcp::socket::dhcpv4::{self, Socket as DhcpSocket};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address};
+use smoltcp::wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv4Cidr};
 use spin::Mutex;
 
 /// Device wrapper that adapts our NetworkDriver trait to smoltcp's Device trait
@@ -105,10 +107,12 @@ impl Device for DeviceWrapper {
 pub struct NetworkStack {
     /// smoltcp interface
     iface: Interface,
-    /// Socket set for TCP/UDP sockets
+    /// Socket set for TCP/UDP/DHCP sockets
     sockets: SocketSet<'static>,
     /// Device wrapper
     device: DeviceWrapper,
+    /// DHCP socket handle (if DHCP is enabled)
+    dhcp_handle: Option<smoltcp::iface::SocketHandle>,
 }
 
 impl NetworkStack {
@@ -162,6 +166,7 @@ impl NetworkStack {
             iface,
             sockets,
             device,
+            dhcp_handle: None,
         })
     }
 
@@ -221,6 +226,174 @@ impl NetworkStack {
     /// Check if the network link is up
     pub fn is_link_up(&self) -> bool {
         self.device.driver.is_link_up()
+    }
+
+    /// Start DHCP client to acquire IP configuration
+    ///
+    /// This creates a DHCP socket and initiates the DHCP discovery process.
+    /// Call `poll()` regularly and use `dhcp_config()` to check when configuration
+    /// is acquired.
+    ///
+    /// # Returns
+    /// * `Ok(())` - DHCP client started successfully
+    /// * `Err(NetError)` - Failed to start DHCP client
+    pub fn start_dhcp(&mut self) -> Result<(), NetError> {
+        // Check if DHCP is already running
+        if self.dhcp_handle.is_some() {
+            return Ok(());
+        }
+
+        // Create DHCP socket
+        let dhcp_socket = dhcp::create_socket();
+
+        // Add socket to the socket set
+        let dhcp_handle = self.sockets.add(dhcp_socket);
+        self.dhcp_handle = Some(dhcp_handle);
+
+        Ok(())
+    }
+
+    /// Get the current DHCP state
+    ///
+    /// # Returns
+    /// * `Some(DhcpState)` - Current DHCP state if DHCP is running
+    /// * `None` - DHCP is not running
+    pub fn dhcp_state(&self) -> Option<DhcpState> {
+        self.dhcp_handle.and_then(|handle| {
+            self.sockets
+                .get::<DhcpSocket>(handle)
+                .map(dhcp::socket_to_state)
+        })
+    }
+
+    /// Get the current DHCP configuration
+    ///
+    /// # Returns
+    /// * `Some(IpConfig)` - IP configuration if DHCP has acquired one
+    /// * `None` - No configuration available yet
+    pub fn dhcp_config(&self) -> Option<IpConfig> {
+        self.dhcp_handle.and_then(|handle| {
+            self.sockets
+                .get::<DhcpSocket>(handle)
+                .and_then(dhcp::extract_config)
+        })
+    }
+
+    /// Acquire IP configuration from DHCP (blocking with timeout)
+    ///
+    /// This is a blocking convenience method that:
+    /// 1. Starts DHCP if not already running
+    /// 2. Polls until configuration is acquired (with timeout)
+    /// 3. Applies the configuration to the interface
+    ///
+    /// **Note**: This method is blocking and will spin-wait until DHCP completes
+    /// or timeout occurs. The caller must provide accurate timestamps on each call
+    /// to poll(). For non-blocking operation, use start_dhcp() + poll() + dhcp_config().
+    ///
+    /// # Arguments
+    /// * `timeout_ms` - Maximum time to wait for DHCP in milliseconds
+    /// * `get_time_ms` - Function to get current time in milliseconds
+    ///
+    /// # Returns
+    /// * `Ok(IpConfig)` - Successfully acquired configuration
+    /// * `Err(NetError)` - Failed to acquire configuration or timeout
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use network::{NetworkStack, IpConfig};
+    /// # fn get_system_time_ms() -> i64 { 0 }
+    /// # let mut stack: NetworkStack = todo!();
+    /// // Acquire DHCP with 30 second timeout
+    /// let config = stack.dhcp_acquire(30_000, get_system_time_ms)?;
+    /// # Ok::<(), network::NetError>(())
+    /// ```
+    pub fn dhcp_acquire<F>(&mut self, timeout_ms: i64, mut get_time_ms: F) -> Result<IpConfig, NetError>
+    where
+        F: FnMut() -> i64,
+    {
+        // Start DHCP if not already running
+        self.start_dhcp()?;
+
+        let start_time = get_time_ms();
+
+        // Poll until we get configuration or timeout
+        loop {
+            let current_time = get_time_ms();
+
+            // Poll the network stack with current timestamp
+            self.poll(current_time)?;
+
+            // Check if we have configuration
+            if let Some(config) = self.dhcp_config() {
+                // Apply the configuration
+                self.apply_dhcp_config(&config)?;
+                return Ok(config);
+            }
+
+            // Check for timeout
+            if current_time - start_time > timeout_ms {
+                return Err(NetError::DhcpTimeout(
+                    "DHCP configuration not acquired within timeout".into(),
+                ));
+            }
+
+            // Small yield to avoid 100% CPU usage
+            // In a real OS, this would be a proper sleep/yield
+            // For now, just continue polling
+        }
+    }
+
+    /// Apply DHCP configuration to the interface
+    ///
+    /// This updates the interface with the IP address, gateway, and DNS servers
+    /// obtained from DHCP.
+    ///
+    /// # Arguments
+    /// * `config` - IP configuration to apply
+    ///
+    /// # Returns
+    /// * `Ok(())` - Configuration applied successfully
+    /// * `Err(NetError)` - Failed to apply configuration
+    pub fn apply_dhcp_config(&mut self, config: &IpConfig) -> Result<(), NetError> {
+        // Update IP address
+        self.iface.update_ip_addrs(|ip_addrs| {
+            // Clear existing addresses
+            ip_addrs.clear();
+
+            // Add new address from DHCP
+            if ip_addrs
+                .push(IpCidr::new(
+                    IpAddress::Ipv4(config.ip),
+                    config.prefix_len,
+                ))
+                .is_err()
+            {
+                return Err(NetError::DhcpConfigFailed(
+                    "Failed to set IP address".to_string(),
+                ));
+            }
+            Ok(())
+        })?;
+
+        // Update default gateway (route)
+        if let Some(gateway) = config.gateway {
+            self.iface.routes_mut().add_default_ipv4_route(gateway)
+                .map_err(|_| NetError::DhcpConfigFailed(
+                    "Failed to set default gateway".to_string(),
+                ))?;
+        }
+
+        // DNS servers are stored in the config but not directly applied to the interface
+        // They would be used by a DNS resolver when needed
+
+        Ok(())
+    }
+
+    /// Stop DHCP client and remove the DHCP socket
+    pub fn stop_dhcp(&mut self) {
+        if let Some(handle) = self.dhcp_handle.take() {
+            self.sockets.remove(handle);
+        }
     }
 }
 

@@ -34,4 +34,13 @@ pub enum NetError {
 
     #[error("smoltcp error: {0}")]
     SmoltcpError(String),
+
+    #[error("DHCP timeout: {0}")]
+    DhcpTimeout(String),
+
+    #[error("DHCP configuration failed: {0}")]
+    DhcpConfigFailed(String),
+
+    #[error("DHCP not configured")]
+    DhcpNotConfigured,
 }
