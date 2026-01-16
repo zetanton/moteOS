@@ -16,6 +16,8 @@ pub enum ConfigError {
     SerializationError(String),
     DeserializationError(String),
     EfiError(String),
+    EncryptionFailed,
+    DecryptionFailed,
 }
 
 impl ConfigError {
