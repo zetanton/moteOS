@@ -31,4 +31,7 @@ pub enum NetError {
     
     #[error("Operation not supported")]
     NotSupported,
+
+    #[error("smoltcp error: {0}")]
+    SmoltcpError(String),
 }
