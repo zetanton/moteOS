@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use crate::screen::Screen;
 use crate::theme::Theme;
 use crate::types::{Key, Rect, WidgetEvent};
+use crate::widget::Widget;
 use crate::widgets::{InputWidget, MessageRole, MessageWidget};
 
 /// Connection status for the chat screen
@@ -318,7 +319,9 @@ impl ChatScreen {
         screen.draw_text(title_x, text_y, &self.title, theme.text_primary);
 
         // Render provider and model in the middle
-        let provider_text = format!("{} / {}", self.provider, self.model);
+        let mut provider_text = self.provider.clone();
+        provider_text.push_str(" / ");
+        provider_text.push_str(&self.model);
         let provider_text_width = provider_text.chars().count() * char_width;
         let provider_x = rect.x + (rect.width / 2) - (provider_text_width / 2);
         screen.draw_text(provider_x, text_y, &provider_text, theme.text_secondary);
@@ -376,7 +379,7 @@ impl ChatScreen {
         } else {
             0
         };
-        self.scroll_offset = self.scroll_offset.min(max_scroll);
+        let scroll_offset = self.scroll_offset.min(max_scroll);
 
         // Render messages from bottom to top
         let mut current_y = rect.y + rect.height;
@@ -385,7 +388,7 @@ impl ChatScreen {
         // Start from the last message and work backwards
         for (message, &height) in self.messages.iter().zip(message_heights.iter()).rev() {
             // Skip messages based on scroll offset
-            if messages_skipped < self.scroll_offset {
+            if messages_skipped < scroll_offset {
                 messages_skipped += 1;
                 continue;
             }
@@ -410,7 +413,10 @@ impl ChatScreen {
 
         // Show scroll indicator if scrolled
         if self.scroll_offset > 0 {
-            let indicator = format!("↑ {} more", self.scroll_offset);
+            use alloc::string::ToString;
+            let mut indicator = String::from("↑ ");
+            indicator.push_str(&self.scroll_offset.to_string());
+            indicator.push_str(" more");
             screen.draw_text(
                 rect.x + char_width,
                 rect.y + char_height / 2,
@@ -477,7 +483,6 @@ impl ChatScreen {
         // Render hotkeys
         let mut x = rect.x + char_width;
         for (key, label) in hotkeys.iter() {
-            let hotkey_text = format!("{}:{}", key, label);
             screen.draw_text(x, text_y, key, theme.accent_primary);
             x += key.chars().count() * char_width;
             screen.draw_text(x, text_y, ":", theme.text_secondary);
@@ -494,11 +499,13 @@ impl ChatScreen {
             ConnectionStatus::Disconnected => "○ Disconnected".to_string(),
             ConnectionStatus::Error(msg) => {
                 // Truncate error message if too long
+                let mut error_text = String::from("● Error: ");
                 if msg.len() > 20 {
-                    format!("● Error: {}", &msg[..20])
+                    error_text.push_str(&msg[..20]);
                 } else {
-                    format!("● Error: {}", msg)
+                    error_text.push_str(msg);
                 }
+                error_text
             }
         }
     }

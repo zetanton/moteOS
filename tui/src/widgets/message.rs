@@ -65,10 +65,35 @@ impl MessageWidget {
         let minutes = (timestamp % 3600) / 60;
         let seconds = timestamp % 60;
 
+        use alloc::string::{String, ToString};
+        
+        // Pad number with leading zero if needed
+        fn pad_two(n: u64) -> String {
+            if n < 10 {
+                let mut s = String::from("0");
+                s.push_str(&n.to_string());
+                s
+            } else {
+                n.to_string()
+            }
+        }
+        
+        let h_padded = pad_two(hours % 24);
+        let m_padded = pad_two(minutes);
+        let s_padded = pad_two(seconds);
+
         if seconds == 0 {
-            format!("{:02}:{:02}", hours % 24, minutes)
+            let mut result = h_padded;
+            result.push_str(":");
+            result.push_str(&m_padded);
+            result
         } else {
-            format!("{:02}:{:02}:{:02}", hours % 24, minutes, seconds)
+            let mut result = h_padded;
+            result.push_str(":");
+            result.push_str(&m_padded);
+            result.push_str(":");
+            result.push_str(&s_padded);
+            result
         }
     }
 
@@ -78,7 +103,7 @@ impl MessageWidget {
     /// within the specified width.
     pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
         if width == 0 {
-            return vec![];
+            return Vec::new();
         }
 
         let mut lines = Vec::new();
@@ -290,13 +315,16 @@ impl Widget for MessageWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_wrap_text_simple() {
         let text = "Hello world";
         let lines = MessageWidget::wrap_text(text, 10);
-        assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0], "Hello world");
+        // "Hello world" (11 chars) with width 10 wraps to 2 lines: "Hello" and "world"
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Hello");
+        assert_eq!(lines[1], "world");
     }
 
     #[test]

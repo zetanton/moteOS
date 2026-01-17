@@ -4,7 +4,6 @@
 //! building the terminal user interface.
 
 #![no_std]
-#![cfg_attr(test, feature(custom_test_frameworks))]
 
 pub mod colors;
 pub mod font;
