@@ -4,12 +4,14 @@
 # AArch64 (ARM64) target configuration
 [target.aarch64-unknown-uefi]
 # Linker for ARM64 cross-compilation
-# On macOS, try aarch64-elf-gcc or aarch64-linux-gnu-gcc
-# On Linux, use aarch64-linux-gnu-gcc
-# Rust may use its own linker if these aren't available
-linker = "aarch64-linux-gnu-ld"
-# Alternative: try aarch64-elf-gcc on macOS if above fails
-# linker = "aarch64-elf-gcc"
+# Use rust-lld (Rust's built-in linker) which works on all platforms
+# This avoids needing cross-compilation toolchains installed
+linker = "rust-lld"
+# Alternative options (if rust-lld doesn't work):
+# On macOS with Homebrew: brew install aarch64-elf-gcc, then use:
+# linker = "aarch64-elf-ld"
+# On Linux: aarch64-linux-gnu-ld
+# linker = "aarch64-linux-gnu-ld"
 
 # Linker flags for ARM64 UEFI
 # Note: The UEFI target may handle linking automatically

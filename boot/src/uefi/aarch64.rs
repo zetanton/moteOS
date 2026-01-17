@@ -8,8 +8,7 @@ use crate::BootInfo;
 use uefi::prelude::*;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::data_types::Identify;
-use uefi::table::boot::MemoryMapKey;
-use uefi::table::boot::SearchType;
+use uefi::table::boot::{MemoryMapKey, MemoryType, SearchType};
 use uefi::table::Boot;
 
 /// UEFI entry point for AArch64
@@ -18,18 +17,21 @@ use uefi::table::Boot;
 /// It initializes UEFI services, acquires the framebuffer, gets the memory map,
 /// exits boot services, and then calls kernel_main().
 pub extern "efiapi" fn efi_main(
-    image_handle: Handle,
+    _image_handle: Handle,
     system_table: *mut uefi::table::SystemTable<uefi::table::Runtime>,
 ) -> uefi::Status {
     // Safety: system_table is provided by UEFI firmware and is valid
     // Convert from Runtime view to Boot view to access boot services
-    let st_boot = unsafe {
+    let st_boot_ref = unsafe {
         // Cast the raw pointer to Boot view - this is safe because at entry time
         // the system table is in boot services mode
         &mut *(system_table as *mut uefi::table::SystemTable<Boot>)
     };
     
-    let bs = st_boot.boot_services();
+    // Clone the SystemTable so we can move it into exit_boot_services
+    // This is safe because the system table pointer is valid and stable
+    let st_boot = unsafe { st_boot_ref.unsafe_clone() };
+    let bs = st_boot_ref.boot_services();
 
     // Acquire framebuffer via Graphics Output Protocol
     let framebuffer_info = match acquire_framebuffer(bs) {
@@ -41,8 +43,8 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    // Get memory map
-    let (memory_map, memory_map_key) = match get_memory_map(bs) {
+    // Get memory map (key is not needed in uefi 0.27 - exit_boot_services handles it)
+    let (memory_map, _memory_map_key) = match get_memory_map(bs) {
         Ok(map) => map,
         Err(_) => {
             return uefi::Status::ABORTED;
@@ -63,15 +65,13 @@ pub extern "efiapi" fn efi_main(
 
     // Exit boot services (required before using memory allocator)
     // This invalidates the boot services pointer, so we must do this last
-    // TODO: Fix exit_boot_services call - uefi 0.27 API may have changed
-    // For now, skip exit_boot_services to get compiling
-    // In uefi 0.27, exit_boot_services signature may be different
-    // Need to check the exact API - it might need MemoryType instead of MemoryMapKey
-    // or it might be in a different module
-    // let _memory_map_storage = unsafe { 
-    //     st_boot.exit_boot_services(memory_map_key)
-    //         .map_err(|_| uefi::Status::ABORTED)?
-    // };
+    // In uefi 0.27, exit_boot_services is a method on SystemTable<Boot>
+    // It takes MemoryType and returns (SystemTable<Runtime>, MemoryMap<'static>)
+    // It consumes st_boot and returns a Runtime view
+    // We need to move st_boot here, so we can't use it after this point
+    let (_st_runtime, _final_memory_map) = st_boot.exit_boot_services(
+        MemoryType::LOADER_DATA
+    );
 
     // Convert memory map storage to our MemoryMap format
     // Note: This is a simplified conversion - in a real implementation,
