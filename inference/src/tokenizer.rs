@@ -3,11 +3,10 @@
 //! This module provides a byte-pair encoding (BPE) tokenizer that can load
 //! vocabulary and merge rules from GGUF model files and encode/decode text.
 
-#![cfg_attr(not(test), no_std)]
-
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::error::{ModelError, TokenizerError};
@@ -315,7 +314,7 @@ impl Tokenizer {
     }
 
     /// Check if a token ID is a special token (BOS, EOS, PAD, or UNK)
-    fn is_special_token(&self, token_id: u32) -> bool {
+    pub fn is_special_token(&self, token_id: u32) -> bool {
         self.special_tokens.bos_token == Some(token_id)
             || self.special_tokens.eos_token == Some(token_id)
             || self.special_tokens.pad_token == Some(token_id)

@@ -13,6 +13,8 @@ pub enum ModelError {
     InvalidTensorAccess(String),
     /// Tokenizer errors
     Tokenizer(TokenizerError),
+    /// Invalid input parameters
+    InvalidInput(String),
 }
 
 /// Errors that can occur during GGUF parsing
@@ -71,6 +73,7 @@ impl core::fmt::Display for ModelError {
             ModelError::MetadataNotFound(key) => write!(f, "Metadata not found: {}", key),
             ModelError::InvalidTensorAccess(msg) => write!(f, "Invalid tensor access: {}", msg),
             ModelError::Tokenizer(e) => write!(f, "Tokenizer error: {}", e),
+            ModelError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
         }
     }
 }

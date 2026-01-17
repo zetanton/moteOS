@@ -1,9 +1,10 @@
-#![no_std]
-
 use alloc::vec::Vec;
-use crate::ops::{matmul_f32, matmul_q4k, add, rms_norm, rope, silu, softmax};
-use crate::tensor::{Tensor, TensorData, BlockQ4K, QK_K};
+use alloc::vec;
+use alloc::format;
+use crate::ops::{matmul_f32, matmul_q4k, add, mul, rms_norm, rope, silu, softmax};
+use crate::tensor::{Tensor, TensorData};
 use crate::error::ModelError;
+use micromath::F32Ext;
 
 /// Model configuration parameters
 #[derive(Debug, Clone)]
@@ -384,12 +385,12 @@ impl Transformer {
         if !cached_k.is_empty() {
             k_full.extend_from_slice(cached_k);
         }
-        k_full.extend_from_slice(k_rope);
+        k_full.extend_from_slice(&k_rope);
         
         if !cached_v.is_empty() {
             v_full.extend_from_slice(cached_v);
         }
-        v_full.extend_from_slice(v);
+        v_full.extend_from_slice(&v);
         
         // 6. Store current K and V in cache
         for pos in 0..seq_len {
@@ -473,7 +474,6 @@ impl Transformer {
     fn qkv_projection(&self, x: &[f32], qkv_weight: &Tensor) -> Result<Vec<f32>, ModelError> {
         let seq_len = x.len() / self.config.hidden_size;
         let hidden_size = self.config.hidden_size;
-        let out_size = seq_len * 3 * hidden_size;
         
         match &qkv_weight.data {
             TensorData::F32(weight) => {
