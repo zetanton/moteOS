@@ -4,3 +4,7 @@
 
 // Re-export the Widget trait for convenience
 pub use crate::widget::Widget;
+
+pub mod message;
+
+pub use message::{MessageRole, MessageWidget};
