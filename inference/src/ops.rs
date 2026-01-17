@@ -1,5 +1,3 @@
-#![no_std]
-
 use alloc::vec::Vec;
 use micromath::F32Ext;
 use crate::tensor::{BlockQ4K, QK_K};
@@ -156,7 +154,7 @@ pub fn matmul_q4k(a: &[u8], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32>
 }
 
 /// Dot product of a Q4_K block and an F32 vector (for vector-matrix mult)
-fn dot_product_q4k_f32(block: &BlockQ4K, b: &[f32]) -> f32 {
+pub fn dot_product_q4k_f32(block: &BlockQ4K, b: &[f32]) -> f32 {
     let mut sum = 0.0;
     
     for i in 0..8 { // 8 groups of 32 elements = 256
@@ -209,6 +207,14 @@ fn get_min(block: &BlockQ4K, i: usize) -> f32 {
         (low as u32 | high) as u8 & 0x3F
     };
     val as f32
+}
+
+/// Simple 64-bit Xorshift random number generator
+pub fn xorshift64(mut seed: u64) -> u64 {
+    seed ^= seed << 13;
+    seed ^= seed >> 7;
+    seed ^= seed << 17;
+    seed
 }
 
 #[cfg(test)]

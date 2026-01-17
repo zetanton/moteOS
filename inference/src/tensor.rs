@@ -6,6 +6,7 @@ pub enum TensorData {
     Q4K(Vec<u8>), // Q4_K_M / block_q4_K
 }
 
+#[derive(Debug, Clone)]
 pub struct Tensor {
     pub data: TensorData,
     pub shape: Vec<usize>,

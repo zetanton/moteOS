@@ -9,6 +9,7 @@ crate-type = ["lib"]
 [dependencies]
 # alloc is part of the standard library, accessed via extern crate alloc
 micromath = "2.1"
+llm = { path = "../llm" }
 
 [features]
 default = []
