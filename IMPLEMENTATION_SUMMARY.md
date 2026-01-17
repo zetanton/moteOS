@@ -36,10 +36,10 @@ Successfully implemented the font system within the `tui` crate, adhering to the
 ## Implementation Details
 
 ### Correct Location and Structure
-The font system is correctly located in `tui/src/font.rs` and is part of the `tui` crate. It is `no_std` compatible and declares `extern crate alloc`.
+The font system is correctly located in `tui/src/font.rs` and is part of the `tui` crate. It is `no_std` compatible (explicitly declaring `#![no_std]` in both `lib.rs` and `font.rs`) and declares `extern crate alloc` in `lib.rs`.
 
 ### Font Loading and Parsing
-Supports both PSF v1 and v2 fonts. The `load_psf` function identifies the version based on the magic number and populates the `Font` struct with its dimensions and glyph count.
+Supports both PSF v1 and v2 fonts. The `load_psf` function identifies the version based on the magic number and populates the `Font` struct with its dimensions and glyph count. It takes a `&'static [u8]` as input, as fonts are typically embedded static data.
 
 ### Rendering with Color
 The `draw_text` function accepts a `Color` parameter as specified. The `Color` type was moved to the `shared` crate to ensure consistency between the `boot` and `tui` crates.

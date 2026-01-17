@@ -1,4 +1,5 @@
 // tui/src/font.rs
+#![no_std]
 
 use shared::FontError;
 
@@ -41,9 +42,12 @@ pub struct Font {
 impl Font {
     /// Loads a font from a byte slice.
     ///
+    /// The input `data` must have a `'static` lifetime because the font glyphs are
+    /// often embedded directly into the binary as static data (e.g., via `include_bytes!`).
+    ///
     /// # Safety
     ///
-    /// The byte slice must be valid and static.
+    /// The byte slice must be a valid PSF font format.
     pub unsafe fn load_psf(data: &'static [u8]) -> Result<Self> {
         if data.len() < 2 {
             return Err(FontError::NotAPsfFont);
