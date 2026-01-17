@@ -88,10 +88,23 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 #[cfg(target_arch = "x86_64")]
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // Read keyboard scan code from port 0x60
-    // In a real implementation, we'd queue this for processing by the input system
-
-    // Acknowledge the interrupt
     unsafe {
+        let status_port = x86_64::instructions::port::Port::<u8>::new(0x64);
+        let data_port = x86_64::instructions::port::Port::<u8>::new(0x60);
+        
+        // Check if data is available
+        let status = status_port.read();
+        if (status & 0x01) != 0 {
+            // Data available, read scancode
+            let scancode = data_port.read();
+
+            // Handle scancode in kernel PS/2 driver (only when the PS/2 module is built)
+            #[cfg(all(target_arch = "x86_64", not(feature = "uefi-minimal")))]
+            {
+                kernel::ps2::handle_scancode(scancode);
+            }
+        }
+        
         // Send EOI to PIC
         x86_64::instructions::port::Port::new(0x20).write(0x20u8);
     }
