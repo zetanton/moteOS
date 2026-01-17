@@ -5,3 +5,8 @@ edition = "2021"
 
 [lib]
 crate-type = ["lib"]
+
+[dependencies]
+miniserde = { workspace = true }
+network = { path = "../network" }
+smoltcp = { workspace = true }

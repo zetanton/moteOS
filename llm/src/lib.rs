@@ -8,9 +8,12 @@
 extern crate alloc;
 
 pub mod error;
+pub mod providers;
+pub mod streaming;
 pub mod types;
 
 pub use error::LlmError;
+pub use providers::XaiClient;
 pub use types::{CompletionResult, FinishReason, GenerationConfig, Message, ModelInfo, Role};
 
 /// Trait for LLM providers.
