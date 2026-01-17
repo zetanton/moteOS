@@ -28,10 +28,10 @@ if ! rustup target list --installed | grep -q "x86_64-unknown-uefi"; then
     rustup target add x86_64-unknown-uefi
 fi
 
-# Build kernel for UEFI
+# Build kernel for UEFI (only boot crate to avoid network dependencies)
 echo -e "${GREEN}Building kernel for UEFI (x86_64)...${NC}"
 cd "$PROJECT_ROOT"
-cargo build --release --target x86_64-unknown-uefi
+cargo build --release --target x86_64-unknown-uefi -p boot
 
 # Find EFI binary (could be moteos.efi, boot.efi, or kernel.efi)
 EFI_BINARY=""
