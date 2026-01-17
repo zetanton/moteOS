@@ -71,7 +71,7 @@ impl MessageWidget {
     ///
     /// Returns a vector of lines, each line being a string that fits
     /// within the specified width.
-    fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
         if width == 0 {
             return vec![];
         }
