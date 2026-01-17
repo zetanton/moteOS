@@ -8,3 +8,4 @@ crate-type = ["lib"]
 
 [dependencies]
 spin = { workspace = true }
+linked_list_allocator = { workspace = true }

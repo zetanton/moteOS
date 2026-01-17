@@ -7,14 +7,9 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 use config::{decrypt_api_key, MoteConfig};
-use linked_list_allocator::LockedHeap;
 use llm::{AnthropicClient, GroqClient, LlmProvider, OpenAiClient, XaiClient};
 use network::{init_network_stack, NetworkStack, NetError};
 use smoltcp::wire::Ipv4Address;
-
-/// Global heap allocator
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 /// Initialize the heap allocator
 ///
@@ -32,9 +27,7 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 /// The heap memory region must be valid and not used for anything else.
 pub fn init_heap(heap_start: usize, heap_size: usize) {
     unsafe {
-        ALLOCATOR
-            .lock()
-            .init(heap_start as *mut u8, heap_size);
+        shared::init_heap(heap_start, heap_size);
     }
 }
 
