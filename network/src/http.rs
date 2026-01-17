@@ -1,3 +1,6 @@
+#![allow(unused_attributes)]
+#![no_std]
+
 extern crate alloc;
 
 use crate::error::NetError;
@@ -316,25 +319,14 @@ fn split_host_port<'a>(authority: &'a str, scheme: Scheme) -> Result<(&'a str, u
         Scheme::Https => 443,
     };
 
-    if let Some(host) = authority.strip_prefix('[') {
+    if authority.starts_with('[') {
         // IPv6 literal: [::1]:443
-        let Some(end) = host.find(']') else {
-            return Err(HttpError::InvalidUrl("unterminated IPv6 literal".into()));
-        };
-        let host_part = &authority[..(end + 2)];
-        let tail = &host[(end + 1)..];
-        let host_inner = &host[..end];
-        if tail.is_empty() {
-            return Ok((host_inner, default_port));
-        }
-        let Some(port_str) = tail.strip_prefix(':') else {
-            return Err(HttpError::InvalidUrl(
-                "invalid IPv6 literal authority".into(),
-            ));
-        };
-        let port = parse_port(port_str)?;
-        let _ = host_part; // keep logic clear; host_inner is returned
-        return Ok((host_inner, port));
+        //
+        // The current network stack only resolves/connects via IPv4 (`Ipv4Address`), so treat IPv6
+        // literals as a parsing error instead of letting it fail later during resolution.
+        return Err(HttpError::InvalidUrl(
+            "IPv6 literal hosts are not supported".into(),
+        ));
     }
 
     let Some((host, port_str)) = authority.rsplit_once(':') else {
@@ -833,7 +825,8 @@ impl TcpConnection {
             // way to borrow the interface context and socket set simultaneously.
             let ctx_ptr = stack.interface_mut().context() as *mut _;
             let sock = stack.sockets_mut().get_mut::<TcpSocket>(handle);
-            // SAFETY: `iface` and `sockets` are disjoint fields of `NetworkStack`.
+            // SAFETY: `iface` and `sockets` are disjoint fields of `NetworkStack`, and the raw
+            // pointer is only used for the duration of this call (no aliasing escapes).
             unsafe { sock.connect(&mut *ctx_ptr, remote, 49152) }
                 .map_err(|e| NetError::TcpConnectionFailed(format!("{:?}", e)))?;
         }
@@ -974,6 +967,15 @@ mod tests {
         assert_eq!(u.host, "example.com");
         assert_eq!(u.port, 8080);
         assert_eq!(u.path_and_query, "/path?q=1");
+    }
+
+    #[test]
+    fn url_parse_rejects_ipv6_literal() {
+        let err = parse_url("http://[::1]:8080/").unwrap_err();
+        match err {
+            HttpError::InvalidUrl(s) => assert!(s.to_ascii_lowercase().contains("ipv6")),
+            _ => panic!("expected InvalidUrl"),
+        }
     }
 
     #[test]
