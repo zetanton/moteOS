@@ -3,6 +3,8 @@
 //! This module provides a byte-pair encoding (BPE) tokenizer that can load
 //! vocabulary and merge rules from GGUF model files and encode/decode text.
 
+#![cfg_attr(not(test), no_std)]
+
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
@@ -188,23 +190,27 @@ impl Tokenizer {
         // Convert text to initial byte-level tokens
         // In proper BPE, we start with each byte as a separate token
         let mut tokens = Vec::new();
-        for byte in text.as_bytes() {
-            // Use byte representation (e.g., "Ġ" for space, proper byte encoding)
-            // For now, try to find single-byte tokens in vocab first
-            let byte_str = format!("{}", *byte as char);
+        for &byte in text.as_bytes() {
+            // First, try byte-level representation (most GGUF models use <0xXX> format)
+            let byte_token = format!("<0x{:02X}>", byte);
 
-            // Check if this byte exists as a token in the vocabulary
-            if self.vocab.contains_key(&byte_str) {
-                tokens.push(byte_str);
-            } else {
-                // Try byte-level representation (many models use <0xXX> format)
-                let byte_token = format!("<0x{:02X}>", byte);
-                if self.vocab.contains_key(&byte_token) {
-                    tokens.push(byte_token);
+            if self.vocab.contains_key(&byte_token) {
+                // Use byte-level token if it exists
+                tokens.push(byte_token);
+            } else if byte < 128 {
+                // For ASCII bytes (0-127), try single-character UTF-8 representation
+                // This is safe because ASCII bytes are valid UTF-8
+                let char_str = format!("{}", byte as char);
+                if self.vocab.contains_key(&char_str) {
+                    tokens.push(char_str);
                 } else {
-                    // Fallback: use the character representation
-                    tokens.push(byte_str);
+                    // Fallback to byte token format even if not in vocab
+                    tokens.push(byte_token);
                 }
+            } else {
+                // For non-ASCII bytes (128-255), always use byte-level representation
+                // Don't cast to char as this can produce invalid UTF-8
+                tokens.push(byte_token);
             }
         }
 
