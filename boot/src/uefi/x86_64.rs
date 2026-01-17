@@ -1,14 +1,14 @@
 // UEFI boot implementation for x86_64 architecture
 // Handles UEFI boot services, Graphics Output Protocol (GOP), and memory map
 
-use uefi::prelude::*;
-use uefi::proto::console::gop::GraphicsOutput;
 use crate::framebuffer::{FramebufferInfo, PixelFormat};
 use crate::memory::{MemoryKind, MemoryMap, MemoryRegion};
 use crate::BootInfo;
+use uefi::prelude::*;
+use uefi::proto::console::gop::GraphicsOutput;
 
 /// UEFI entry point for x86_64
-/// 
+///
 /// This is the main entry point called by UEFI firmware.
 /// It initializes UEFI services, acquires the framebuffer, gets the memory map,
 /// exits boot services, and then calls kernel_main().
@@ -19,7 +19,8 @@ pub extern "efiapi" fn efi_main(
 ) -> uefi::Status {
     // Safety: system_table is provided by UEFI firmware and is valid
     let uefi::Result::Ok(bs) = unsafe { uefi::table::SystemTable::as_mut(system_table) }
-        .map(|st| unsafe { st.boot_services() }) else {
+        .map(|st| unsafe { st.boot_services() })
+    else {
         return uefi::Status::ABORTED;
     };
 
@@ -29,13 +30,7 @@ pub extern "efiapi" fn efi_main(
         Err(_) => {
             // If we can't get framebuffer, create a dummy one
             // This should not happen in normal operation
-            FramebufferInfo::new(
-                core::ptr::null_mut(),
-                0,
-                0,
-                0,
-                PixelFormat::Bgra,
-            )
+            FramebufferInfo::new(core::ptr::null_mut(), 0, 0, 0, PixelFormat::Bgra)
         }
     };
 
@@ -71,12 +66,8 @@ pub extern "efiapi" fn efi_main(
     // Convert memory map storage to our MemoryMap format
     // Note: This is a simplified conversion - in a real implementation,
     // we'd need to properly parse the UEFI memory map
-    let memory_regions: &'static [MemoryRegion] = unsafe {
-        core::slice::from_raw_parts(
-            core::ptr::null(),
-            0,
-        )
-    };
+    let memory_regions: &'static [MemoryRegion] =
+        unsafe { core::slice::from_raw_parts(core::ptr::null(), 0) };
     let memory_map = MemoryMap::new(memory_regions);
 
     // Get ACPI RSDP address (if available)
@@ -119,7 +110,7 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
 
     // Query available modes
     let modes = gop.modes(bs);
-    
+
     // Find the best mode (highest resolution, or at least 1024x768)
     let mut best_mode = None;
     let mut best_resolution = 0;
@@ -127,7 +118,7 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
     for mode in modes {
         let info = mode.info();
         let resolution = info.resolution().0 * info.resolution().1;
-        
+
         if resolution >= 1024 * 768 && resolution > best_resolution {
             best_resolution = resolution;
             best_mode = Some(mode);
@@ -136,7 +127,10 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
 
     // If no suitable mode found, use the first available mode
     let selected_mode = best_mode.unwrap_or_else(|| {
-        modes.into_iter().next().expect("No graphics modes available")
+        modes
+            .into_iter()
+            .next()
+            .expect("No graphics modes available")
     });
 
     // Set the mode
@@ -174,7 +168,7 @@ fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::
     // UEFI requires a buffer that's large enough - we'll use a reasonable size
     let buffer_size = 4096 * 8; // 32KB should be enough for most systems
     let mut buffer = [0u8; 32768];
-    
+
     let (key, desc_size) = bs
         .memory_map(&mut buffer)
         .map_err(|_| uefi::Status::ABORTED)?;
@@ -182,12 +176,8 @@ fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::
     // Parse memory descriptors
     // Note: This is a simplified implementation
     // In a real implementation, we'd properly parse all descriptors
-    let memory_regions: &'static [MemoryRegion] = unsafe {
-        core::slice::from_raw_parts(
-            core::ptr::null(),
-            0,
-        )
-    };
+    let memory_regions: &'static [MemoryRegion] =
+        unsafe { core::slice::from_raw_parts(core::ptr::null(), 0) };
 
     let memory_map = MemoryMap::new(memory_regions);
 

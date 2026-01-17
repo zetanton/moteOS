@@ -9,16 +9,11 @@ pub enum LlmError {
     /// Network-related error (connection failed, timeout, etc.)
     NetworkError(String),
     /// HTTP error with status code and response body.
-    HttpError {
-        status: u16,
-        body: String,
-    },
+    HttpError { status: u16, body: String },
     /// Authentication error (invalid API key, etc.)
     AuthError(String),
     /// Rate limit error with optional retry-after seconds.
-    RateLimitError {
-        retry_after: Option<u64>,
-    },
+    RateLimitError { retry_after: Option<u64> },
     /// Invalid model identifier.
     InvalidModel(String),
     /// Error parsing response or request data.

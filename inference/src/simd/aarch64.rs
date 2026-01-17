@@ -6,21 +6,21 @@ pub unsafe fn dot_product_f32_neon(a: &[f32], b: &[f32]) -> f32 {
     let n = a.len();
     let mut sumv = vdupq_n_f32(0.0);
     let mut i = 0;
-    
+
     while i + 4 <= n {
         let va = vld1q_f32(a.as_ptr().add(i));
         let vb = vld1q_f32(b.as_ptr().add(i));
         sumv = vfmaq_f32(sumv, va, vb);
         i += 4;
     }
-    
+
     let mut final_sum = vaddvq_f32(sumv);
-    
+
     while i < n {
         final_sum += a[i] * b[i];
         i += 1;
     }
-    
+
     final_sum
 }
 

@@ -54,7 +54,7 @@ use embedded_tls::{TlsError as EmbeddedTlsError, TlsVerifier};
 use smoltcp::iface::SocketHandle;
 use smoltcp::socket::tcp::{self, Socket as TcpSocket, State as TcpState};
 use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
-use webpki::{DnsNameRef, EndEntityCert, TlsServerTrustAnchors, Time};
+use webpki::{DnsNameRef, EndEntityCert, Time, TlsServerTrustAnchors};
 use x509_parser::prelude::*;
 
 /// Maximum TLS record size (16KB as recommended by embedded-tls)
@@ -680,10 +680,7 @@ impl<CipherSuite> TlsVerifier<CipherSuite> for WebPkiVerifier<CipherSuite> {
         Ok(())
     }
 
-    fn verify_signature(
-        &mut self,
-        _signature: &[u8],
-    ) -> Result<(), EmbeddedTlsError> {
+    fn verify_signature(&mut self, _signature: &[u8]) -> Result<(), EmbeddedTlsError> {
         // For TLS 1.3, signature verification is part of the handshake
         // and is validated by embedded-tls itself using the certificate
         // we validated in verify_certificate().

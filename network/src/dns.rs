@@ -464,7 +464,10 @@ mod tests {
     #[test]
     fn test_encode_domain_name() {
         let encoded = encode_domain_name("example.com");
-        assert_eq!(encoded, vec![7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0]);
+        assert_eq!(
+            encoded,
+            vec![7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0]
+        );
     }
 
     #[test]

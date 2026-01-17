@@ -183,12 +183,24 @@ fn test_color_rgb_values() {
 fn test_color_contrast() {
     // Verify that text colors have good contrast with backgrounds
     // Dark theme: light text on dark background
-    assert!(DARK_THEME.text_primary.r > 200, "Dark theme text should be light");
-    assert!(DARK_THEME.background.r < 50, "Dark theme background should be dark");
+    assert!(
+        DARK_THEME.text_primary.r > 200,
+        "Dark theme text should be light"
+    );
+    assert!(
+        DARK_THEME.background.r < 50,
+        "Dark theme background should be dark"
+    );
 
     // Light theme: dark text on light background
-    assert!(LIGHT_THEME.text_primary.r < 100, "Light theme text should be dark");
-    assert!(LIGHT_THEME.background.r > 200, "Light theme background should be light");
+    assert!(
+        LIGHT_THEME.text_primary.r < 100,
+        "Light theme text should be dark"
+    );
+    assert!(
+        LIGHT_THEME.background.r > 200,
+        "Light theme background should be light"
+    );
 }
 
 #[test]

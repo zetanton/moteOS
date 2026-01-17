@@ -24,7 +24,12 @@ pub struct Rect {
 
 impl Rect {
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub const fn from_point_size(point: Point, width: usize, height: usize) -> Self {
@@ -37,7 +42,10 @@ impl Rect {
     }
 
     pub const fn top_left(&self) -> Point {
-        Point { x: self.x, y: self.y }
+        Point {
+            x: self.x,
+            y: self.y,
+        }
     }
 
     pub const fn bottom_right(&self) -> Point {

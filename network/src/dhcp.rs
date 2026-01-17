@@ -16,8 +16,10 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use smoltcp::socket::dhcpv4::{Config as DhcpConfig, Event, Socket as DhcpSocket};
+use smoltcp::socket::dhcpv4::{Config as DhcpConfig, Event, Socket};
 use smoltcp::wire::Ipv4Address;
+
+pub type DhcpSocket = Socket<'static>;
 
 /// IP configuration obtained from DHCP server
 #[derive(Debug, Clone, PartialEq)]

@@ -38,8 +38,8 @@ pub const QK_K: usize = 256;
 
 #[repr(C, packed)]
 pub struct BlockQ4K {
-    pub d: f32,             // super-block scale (using f32 for simplicity in no_std)
-    pub dmin: f32,          // super-block scale for quantized mins
-    pub scales: [u8; 12],   // scales and mins, quantized with 6 bits
-    pub qs: [u8; 128],      // 4-bit quarters
+    pub d: f32,           // super-block scale (using f32 for simplicity in no_std)
+    pub dmin: f32,        // super-block scale for quantized mins
+    pub scales: [u8; 12], // scales and mins, quantized with 6 bits
+    pub qs: [u8; 128],    // 4-bit quarters
 }

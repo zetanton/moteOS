@@ -11,9 +11,7 @@ pub mod error;
 pub mod types;
 
 pub use error::LlmError;
-pub use types::{
-    CompletionResult, FinishReason, GenerationConfig, Message, ModelInfo, Role,
-};
+pub use types::{CompletionResult, FinishReason, GenerationConfig, Message, ModelInfo, Role};
 
 /// Trait for LLM providers.
 ///

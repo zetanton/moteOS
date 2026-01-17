@@ -200,9 +200,6 @@ impl Framebuffer {
     ///
     /// Writes to the entire framebuffer.
     pub unsafe fn clear(&mut self, color: Color) {
-        self.fill_rect(
-            Rect::new(0, 0, self.width, self.height),
-            color,
-        );
+        self.fill_rect(Rect::new(0, 0, self.width, self.height), color);
     }
 }
