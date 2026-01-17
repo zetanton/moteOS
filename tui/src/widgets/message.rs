@@ -3,11 +3,16 @@
 //! Provides text wrapping, timestamp display, and distinct styling
 //! for user and assistant messages.
 
+extern crate alloc;
+
 use crate::colors::Color;
 use crate::screen::{BoxStyle, Screen};
 use crate::theme::Theme;
 use crate::types::{Key, Rect, WidgetEvent};
 use crate::widget::Widget;
+
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// Message role indicating who sent the message
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

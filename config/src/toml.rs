@@ -589,9 +589,9 @@ impl Serializer {
                 self.output.push_str(&i.to_string());
             }
             Value::Float(f) => {
-                // Format float with proper precision
-                let s = format!("{}", f);
-                self.output.push_str(&s);
+                // Format float - use ToString trait
+                use alloc::string::ToString;
+                self.output.push_str(&f.to_string());
             }
             Value::Boolean(b) => {
                 self.output.push_str(if *b { "true" } else { "false" });
@@ -624,9 +624,17 @@ impl Serializer {
                 '\r' => self.output.push_str("\\r"),
                 '\t' => self.output.push_str("\\t"),
                 ch if ch.is_control() => {
-                    // Escape other control characters
+                    // Escape other control characters - build string manually
                     let code = ch as u32;
-                    self.output.push_str(&format!("\\u{:04x}", code));
+                    self.output.push_str("\\u");
+                    // Format hex manually
+                    let hex_digits = "0123456789abcdef";
+                    let mut hex_str = String::new();
+                    for i in (0..4).rev() {
+                        let nibble = ((code >> (i * 4)) & 0xf) as usize;
+                        hex_str.push(hex_digits.as_bytes()[nibble] as char);
+                    }
+                    self.output.push_str(&hex_str);
                 }
                 ch => self.output.push(ch),
             }

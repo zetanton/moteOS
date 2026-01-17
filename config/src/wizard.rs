@@ -175,7 +175,7 @@ impl SetupWizard {
     /// Get the current configuration (if complete)
     pub fn get_config(&self) -> Option<&MoteConfig> {
         match &self.state {
-            WizardState::Ready { config } | WizardState::Complete => Some(&self.config),
+            WizardState::Ready { config: _ } | WizardState::Complete => Some(&self.config),
             _ => None,
         }
     }
