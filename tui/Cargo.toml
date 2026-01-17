@@ -1,0 +1,14 @@
+[package]
+name = "tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TUI framework for moteOS"
+
+[dependencies]
+shared = { path = "../shared" }
+
+[lib]
+name = "tui"
+path = "src/lib.rs"
