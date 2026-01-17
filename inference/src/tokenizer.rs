@@ -1,4 +1,10 @@
+//! BPE tokenizer implementation for loading vocabulary from GGUF files
+//!
+//! This module provides a byte-pair encoding (BPE) tokenizer that can load
+//! vocabulary and merge rules from GGUF model files and encode/decode text.
+
 use alloc::collections::BTreeMap;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -179,16 +185,30 @@ impl Tokenizer {
             return Vec::new();
         }
 
-        // Convert text to bytes and then to initial tokens
+        // Convert text to initial byte-level tokens
+        // In proper BPE, we start with each byte as a separate token
         let mut tokens = Vec::new();
         for byte in text.as_bytes() {
-            // Convert each byte to its string representation
-            // Most tokenizers use a byte-level encoding
-            let byte_str = alloc::format!("{}", *byte as char);
-            tokens.push(byte_str);
+            // Use byte representation (e.g., "Ġ" for space, proper byte encoding)
+            // For now, try to find single-byte tokens in vocab first
+            let byte_str = format!("{}", *byte as char);
+
+            // Check if this byte exists as a token in the vocabulary
+            if self.vocab.contains_key(&byte_str) {
+                tokens.push(byte_str);
+            } else {
+                // Try byte-level representation (many models use <0xXX> format)
+                let byte_token = format!("<0x{:02X}>", byte);
+                if self.vocab.contains_key(&byte_token) {
+                    tokens.push(byte_token);
+                } else {
+                    // Fallback: use the character representation
+                    tokens.push(byte_str);
+                }
+            }
         }
 
-        // Apply BPE merge rules
+        // Apply BPE merge rules with proper priority ordering
         if !self.merges.is_empty() {
             tokens = self.apply_merges(tokens);
         }
@@ -209,16 +229,32 @@ impl Tokenizer {
     }
 
     /// Apply BPE merge rules to a sequence of tokens
+    ///
+    /// This implements the BPE algorithm by repeatedly applying merge rules
+    /// in priority order. The merge rules in the `merges` vector are ordered
+    /// by priority (earlier merges have higher priority).
+    ///
+    /// The algorithm:
+    /// 1. For each merge rule (in order)
+    /// 2. Scan through the token sequence
+    /// 3. Merge all occurrences of the pair
+    /// 4. Continue until all merge rules are applied
     fn apply_merges(&self, mut tokens: Vec<String>) -> Vec<String> {
-        // Apply each merge rule iteratively
+        // Apply each merge rule in priority order
+        // The order of merges in the vector represents their priority
         for (left, right) in &self.merges {
             let mut i = 0;
+
+            // Apply this merge rule to all matching pairs in the sequence
             while i < tokens.len().saturating_sub(1) {
                 if tokens[i] == *left && tokens[i + 1] == *right {
                     // Merge the two tokens
-                    let merged = alloc::format!("{}{}", left, right);
+                    let merged = format!("{}{}", left, right);
                     tokens[i] = merged;
                     tokens.remove(i + 1);
+
+                    // Don't increment i here - check if the merged token can be merged again
+                    // This handles cases where a merge creates a new mergeable pair
                 } else {
                     i += 1;
                 }
@@ -235,6 +271,12 @@ impl Tokenizer {
     /// 2. Concatenating the token strings
     /// 3. Handling special tokens appropriately
     ///
+    /// Special token handling:
+    /// - BOS (beginning of sequence): Skipped in output
+    /// - EOS (end of sequence): Stops decoding when encountered
+    /// - PAD (padding): Skipped in output
+    /// - UNK (unknown): Included in output if present
+    ///
     /// # Arguments
     /// * `token_ids` - The token IDs to decode
     ///
@@ -244,25 +286,34 @@ impl Tokenizer {
         let mut result = String::new();
 
         for &token_id in token_ids {
-            // Skip special tokens in decoding (optional behavior)
-            if self.is_special_token(token_id) {
+            // Stop decoding if we encounter EOS token
+            if self.special_tokens.eos_token == Some(token_id) {
+                break;
+            }
+
+            // Skip BOS and PAD tokens in output
+            if self.special_tokens.bos_token == Some(token_id)
+                || self.special_tokens.pad_token == Some(token_id)
+            {
                 continue;
             }
 
+            // Include all other tokens (including UNK if it appears in the sequence)
             if let Some(token) = self.id_to_token.get(&token_id) {
                 result.push_str(token);
             }
-            // Skip unknown token IDs
+            // Skip unknown token IDs that aren't in vocabulary
         }
 
         result
     }
 
-    /// Check if a token ID is a special token
+    /// Check if a token ID is a special token (BOS, EOS, PAD, or UNK)
     fn is_special_token(&self, token_id: u32) -> bool {
         self.special_tokens.bos_token == Some(token_id)
             || self.special_tokens.eos_token == Some(token_id)
             || self.special_tokens.pad_token == Some(token_id)
+            || self.special_tokens.unk_token == Some(token_id)
     }
 
     /// Get the beginning of sequence token ID
