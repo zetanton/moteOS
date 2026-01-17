@@ -5,6 +5,7 @@ members = [
     "llm",
     "inference",
     "config",
+    "kernel",
     "shared",
 ]
 
