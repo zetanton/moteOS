@@ -45,6 +45,8 @@ pub mod init;
 pub mod input;
 #[cfg(not(feature = "uefi-minimal"))]
 pub mod screen;
+#[cfg(all(not(feature = "uefi-minimal"), feature = "full-tls"))]
+pub mod tls_test;
 pub mod serial;
 
 // Global kernel state

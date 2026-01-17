@@ -72,6 +72,33 @@ const TCP_TX_BUFFER_SIZE: usize = 16384;
 /// The webpki-roots crate provides these certificates in a no_std compatible format.
 static TLS_SERVER_ROOTS: &TlsServerTrustAnchors = &webpki_roots::TLS_SERVER_ROOTS;
 
+/// Logging callback type for TLS operations
+/// 
+/// This allows external code to receive log messages about TLS handshake
+/// and certificate verification. The callback receives log level and message.
+pub type TlsLogCallback = Option<fn(level: &str, message: &str)>;
+
+/// Global TLS logging callback (set via set_tls_log_callback)
+static mut TLS_LOG_CALLBACK: TlsLogCallback = None;
+
+/// Set the global TLS logging callback
+/// 
+/// # Safety
+/// This function is unsafe because it modifies global state without synchronization.
+/// It should only be called during initialization before any TLS operations.
+pub unsafe fn set_tls_log_callback(callback: TlsLogCallback) {
+    TLS_LOG_CALLBACK = callback;
+}
+
+/// Internal logging function for TLS operations
+fn tls_log(level: &str, message: &str) {
+    unsafe {
+        if let Some(callback) = TLS_LOG_CALLBACK {
+            callback(level, message);
+        }
+    }
+}
+
 /// TLS connection handle that manages a TCP socket with TLS encryption
 ///
 /// This struct provides a simplified interface for TLS connections over TCP.
@@ -267,10 +294,14 @@ impl TlsConnection {
         F: FnMut() -> i64,
         S: FnMut(i64),
     {
+        tls_log("INFO", &alloc::format!("Starting TLS handshake with {}", self.hostname));
+        
         // Create TLS configuration
         let config = TlsConfig::new()
             .with_server_name(&self.hostname)
             .enable_rsa_signatures();
+
+        tls_log("DEBUG", "TLS config created with SNI and RSA signatures enabled");
 
         // Create TCP adapter for embedded-tls
         let mut tcp_adapter = TcpSocketAdapter {
@@ -282,6 +313,9 @@ impl TlsConnection {
 
         // Create WebPKI verifier for certificate validation
         let mut verifier = WebPkiVerifier::new();
+        verifier.set_hostname_verification(&self.hostname);
+        
+        tls_log("DEBUG", "WebPKI verifier created, hostname verification enabled");
 
         // Create TLS context with proper certificate verification
         let context = TlsContext::new(&config, &mut verifier);
@@ -293,13 +327,20 @@ impl TlsConnection {
             &mut *self.write_buffer,
         );
 
+        tls_log("INFO", "Initiating TLS handshake...");
+
         // Perform handshake (blocking)
-        tls.open(context)
-            .map_err(|e| NetError::TlsHandshakeFailed(format!("{:?}", e)))?;
-
-        self.handshake_complete = true;
-
-        Ok(())
+        match tls.open(context) {
+            Ok(_) => {
+                tls_log("INFO", "TLS handshake completed successfully");
+                self.handshake_complete = true;
+                Ok(())
+            }
+            Err(e) => {
+                tls_log("ERROR", &alloc::format!("TLS handshake failed: {:?}", e));
+                Err(NetError::TlsHandshakeFailed(format!("{:?}", e)))
+            }
+        }
     }
 
     /// Write data to the TLS connection
@@ -631,6 +672,7 @@ impl<CipherSuite> Default for WebPkiVerifier<CipherSuite> {
 impl<CipherSuite> TlsVerifier<CipherSuite> for WebPkiVerifier<CipherSuite> {
     fn set_hostname_verification(&mut self, hostname: &str) {
         self.hostname = Some(hostname.to_string());
+        tls_log("DEBUG", &alloc::format!("Hostname verification set to: {}", hostname));
     }
 
     fn verify_certificate(
@@ -639,48 +681,95 @@ impl<CipherSuite> TlsVerifier<CipherSuite> for WebPkiVerifier<CipherSuite> {
         _ca_certificate: Option<&[u8]>,
         server_certificate: &[u8],
     ) -> Result<(), EmbeddedTlsError> {
+        tls_log("INFO", "Certificate verification started");
+        tls_log("DEBUG", &alloc::format!("Certificate size: {} bytes", server_certificate.len()));
+        
         // Store transcript and certificate for signature verification
         self.transcript = Some(transcript.to_vec());
         self.server_cert = Some(server_certificate.to_vec());
 
         // Parse the certificate using x509-parser
         let (_, cert) = X509Certificate::from_der(server_certificate)
-            .map_err(|_| EmbeddedTlsError::InvalidCertificate)?;
-
-        // Verify certificate is valid for the current time
-        let current_time = Self::get_current_time();
-
-        // Convert certificate to webpki format
-        let end_entity_cert = EndEntityCert::try_from(server_certificate)
-            .map_err(|_| EmbeddedTlsError::InvalidCertificate)?;
-
-        // Verify hostname if set
-        if let Some(ref hostname) = self.hostname {
-            let dns_name = DnsNameRef::try_from_ascii_str(hostname)
-                .map_err(|_| EmbeddedTlsError::InvalidCertificate)?;
-
-            end_entity_cert
-                .verify_is_valid_for_dns_name(dns_name)
-                .map_err(|_| EmbeddedTlsError::InvalidCertificate)?;
-        }
-
-        // Verify certificate chain against trusted root CAs
-        end_entity_cert
-            .verify_is_valid_tls_server_cert(
-                &webpki::RSA_PKCS1_2048_8192_SHA256,
-                TLS_SERVER_ROOTS,
-                &[],
-                current_time,
-            )
-            .map_err(|e| {
-                // Certificate verification failed
+            .map_err(|_| {
+                tls_log("ERROR", "Failed to parse X.509 certificate");
                 EmbeddedTlsError::InvalidCertificate
             })?;
 
-        Ok(())
+        tls_log("DEBUG", "X.509 certificate parsed successfully");
+
+        // Try to extract subject information
+        if let Ok(subject) = cert.subject() {
+            let subject_str = subject.iter()
+                .map(|rdn| {
+                    rdn.iter()
+                        .map(|atv| format!("{}={}", atv.attr_type().to_string(), 
+                            core::str::from_utf8(atv.as_bytes()).unwrap_or("?")))
+                        .collect::<alloc::vec::Vec<_>>()
+                        .join(",")
+                })
+                .collect::<alloc::vec::Vec<_>>()
+                .join(",");
+            tls_log("DEBUG", &alloc::format!("Certificate subject: {}", subject_str));
+        }
+
+        // Verify certificate is valid for the current time
+        let current_time = Self::get_current_time();
+        tls_log("DEBUG", &alloc::format!("Using validation time: {} (Unix timestamp)", 
+            current_time.as_seconds_since_unix_epoch()));
+
+        // Convert certificate to webpki format
+        let end_entity_cert = EndEntityCert::try_from(server_certificate)
+            .map_err(|_| {
+                tls_log("ERROR", "Failed to convert certificate to webpki format");
+                EmbeddedTlsError::InvalidCertificate
+            })?;
+
+        tls_log("DEBUG", "Certificate converted to webpki format");
+
+        // Verify hostname if set
+        if let Some(ref hostname) = self.hostname {
+            tls_log("INFO", &alloc::format!("Verifying hostname: {}", hostname));
+            let dns_name = DnsNameRef::try_from_ascii_str(hostname)
+                .map_err(|_| {
+                    tls_log("ERROR", &alloc::format!("Invalid DNS name format: {}", hostname));
+                    EmbeddedTlsError::InvalidCertificate
+                })?;
+
+            end_entity_cert
+                .verify_is_valid_for_dns_name(dns_name)
+                .map_err(|_| {
+                    tls_log("ERROR", &alloc::format!("Hostname verification failed: certificate does not match {}", hostname));
+                    EmbeddedTlsError::InvalidCertificate
+                })?;
+            
+            tls_log("INFO", "Hostname verification passed");
+        }
+
+        // Verify certificate chain against trusted root CAs
+        tls_log("INFO", "Verifying certificate chain against trusted root CAs");
+        tls_log("DEBUG", &alloc::format!("Using {} trusted root CAs", 
+            TLS_SERVER_ROOTS.len()));
+        
+        match end_entity_cert.verify_is_valid_tls_server_cert(
+            &webpki::RSA_PKCS1_2048_8192_SHA256,
+            TLS_SERVER_ROOTS,
+            &[],
+            current_time,
+        ) {
+            Ok(_) => {
+                tls_log("INFO", "Certificate chain verification passed");
+                Ok(())
+            }
+            Err(e) => {
+                tls_log("ERROR", &alloc::format!("Certificate chain verification failed: {:?}", e));
+                Err(EmbeddedTlsError::InvalidCertificate)
+            }
+        }
     }
 
-    fn verify_signature(&mut self, _signature: &[u8]) -> Result<(), EmbeddedTlsError> {
+    fn verify_signature(&mut self, signature: &[u8]) -> Result<(), EmbeddedTlsError> {
+        tls_log("DEBUG", &alloc::format!("Verifying CertificateVerify signature ({} bytes)", signature.len()));
+        
         // For TLS 1.3, signature verification is part of the handshake
         // and is validated by embedded-tls itself using the certificate
         // we validated in verify_certificate().
@@ -691,9 +780,11 @@ impl<CipherSuite> TlsVerifier<CipherSuite> for WebPkiVerifier<CipherSuite> {
 
         // Ensure we have verified a certificate
         if self.server_cert.is_none() {
+            tls_log("ERROR", "Signature verification called before certificate verification");
             return Err(EmbeddedTlsError::InvalidCertificate);
         }
 
+        tls_log("DEBUG", "CertificateVerify signature will be validated by embedded-tls");
         // embedded-tls will handle the actual signature verification
         // using the public key from the certificate
         Ok(())

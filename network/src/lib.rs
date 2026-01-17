@@ -24,4 +24,4 @@ pub use error::NetError;
 pub use http::{parse_url, HttpClient, HttpError, HttpResponse, ParsedUrl, Scheme};
 pub use stack::{get_network_stack, init_network_stack, poll_network_stack, NetworkStack};
 #[cfg(feature = "tls")]
-pub use tls::TlsConnection;
+pub use tls::{set_tls_log_callback, TlsConnection, TlsLogCallback};
