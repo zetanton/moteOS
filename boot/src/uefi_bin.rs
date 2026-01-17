@@ -27,6 +27,7 @@ pub extern "efiapi" fn efi_main(
 }
 
 /// Panic handler for UEFI boot
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     // In a real implementation, we'd log the panic info via UEFI console

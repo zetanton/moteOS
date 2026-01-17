@@ -10,6 +10,7 @@ crate-type = ["lib"]
 [[bin]]
 name = "boot"
 path = "src/uefi_bin.rs"
+test = false
 
 [dependencies]
 # Workspace dependencies
