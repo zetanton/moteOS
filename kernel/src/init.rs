@@ -170,14 +170,14 @@ fn get_dns_server(network: Option<&NetworkStack>) -> Ipv4Address {
 pub fn get_time_ms() -> i64 {
     // TODO: Use proper timer
     // For now, return a placeholder
-    boot::timer::get_ticks() as i64 * 10 // Assume 100Hz = 10ms per tick
+    shared::timer::get_ticks() as i64 * 10 // Assume 100Hz = 10ms per tick
 }
 
 /// Sleep for the specified number of milliseconds
 ///
 /// This uses the timer's sleep function.
 pub fn sleep_ms(ms: i64) {
-    boot::timer::sleep_ms(ms as u64);
+    shared::timer::sleep_ms(ms as u64);
 }
 
 /// Initialize LLM provider from configuration

@@ -1,14 +1,16 @@
 // UEFI boot implementation for x86_64 architecture
 // Handles UEFI boot services, Graphics Output Protocol (GOP), and memory map
 
-use crate::framebuffer::{FramebufferInfo, PixelFormat};
-use crate::memory::{MemoryKind, MemoryMap, MemoryRegion};
-use crate::BootInfo;
+use crate::{BootInfo, FramebufferInfo, MemoryKind, MemoryMap, MemoryRegion, PixelFormat};
+use kernel::kernel_main;
+use core::fmt::Write;
 use uefi::prelude::*;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::data_types::Identify;
 use uefi::table::boot::{MemoryMapKey, MemoryType, SearchType};
 use uefi::table::Boot;
+
+ 
 
 /// UEFI entry point for x86_64
 ///
@@ -30,6 +32,8 @@ pub extern "efiapi" fn efi_main(
     // Clone the SystemTable so we can move it into exit_boot_services
     // This is safe because the system table pointer is valid and stable
     let st_boot = unsafe { st_boot_ref.unsafe_clone() };
+    let _ = st_boot_ref.stdout().clear();
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: booting kernel...");
     let bs = st_boot_ref.boot_services();
 
     // Acquire framebuffer via Graphics Output Protocol
@@ -84,7 +88,7 @@ pub extern "efiapi" fn efi_main(
     let rsdp_addr = None; // TODO: Locate ACPI RSDP
 
     // Create BootInfo
-    let _boot_info = BootInfo::new(
+    let boot_info = BootInfo::new(
         framebuffer_info,
         memory_map,
         rsdp_addr,
@@ -92,14 +96,8 @@ pub extern "efiapi" fn efi_main(
         heap_size,
     );
 
-    // Call kernel_main
-    // Note: kernel_main should be defined in the kernel crate
-    // For now, we'll just halt
-    unsafe {
-        x86_64::instructions::hlt();
-    }
-
-    uefi::Status::SUCCESS
+    // Call kernel_main - this never returns
+    kernel_main(boot_info);
 }
 
 /// Acquire framebuffer via Graphics Output Protocol

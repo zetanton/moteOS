@@ -2,6 +2,7 @@
 
 use crate::colors::Color;
 use crate::types::Rect;
+use shared::{FramebufferInfo as SharedFramebufferInfo, PixelFormat as SharedPixelFormat};
 
 /// Pixel format for the framebuffer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +81,29 @@ impl FramebufferInfo {
             stride,
             pixel_format,
         }
+    }
+}
+
+impl From<SharedPixelFormat> for PixelFormat {
+    fn from(format: SharedPixelFormat) -> Self {
+        match format {
+            SharedPixelFormat::Rgb => PixelFormat::Rgb,
+            SharedPixelFormat::Bgr => PixelFormat::Bgr,
+            SharedPixelFormat::Rgba => PixelFormat::Rgba,
+            SharedPixelFormat::Bgra => PixelFormat::Bgra,
+        }
+    }
+}
+
+impl From<SharedFramebufferInfo> for FramebufferInfo {
+    fn from(info: SharedFramebufferInfo) -> Self {
+        FramebufferInfo::new(
+            info.base,
+            info.width,
+            info.height,
+            info.stride,
+            info.pixel_format.into(),
+        )
     }
 }
 

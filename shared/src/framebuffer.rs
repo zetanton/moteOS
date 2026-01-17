@@ -1,9 +1,10 @@
 // Framebuffer interface for moteOS
 // Provides safe access to bootloader-provided framebuffer
 
-use shared::{Color, Point, Rect};
+use crate::{Color, Point, Rect};
 
 /// Pixel format for framebuffer
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
     /// 24-bit RGB (red, green, blue)
@@ -30,6 +31,7 @@ impl PixelFormat {
 ///
 /// This struct contains all information needed to access and write to the framebuffer.
 /// The `base` pointer is unsafe to dereference and must be used with caution.
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FramebufferInfo {
     /// Base address of the framebuffer (unsafe to dereference)

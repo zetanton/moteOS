@@ -75,7 +75,7 @@ extern "x86-interrupt" fn double_fault_handler(
 #[cfg(target_arch = "x86_64")]
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // Increment tick counter
-    crate::timer::increment_ticks();
+    shared::timer::increment_ticks();
 
     // Acknowledge the interrupt
     // For APIC: write to EOI register

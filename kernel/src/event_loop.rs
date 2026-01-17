@@ -5,7 +5,7 @@
 
 use crate::GLOBAL_STATE;
 use crate::init;
-use boot::timer;
+use shared::timer;
 use network::poll_network_stack;
 
 /// Main event loop

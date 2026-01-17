@@ -14,11 +14,10 @@ linked_list_allocator = { workspace = true }
 log = { workspace = true }
 
 # Internal dependencies
-boot = { path = "../boot" }
 shared = { path = "../shared" }
-network = { path = "../network" }
-config = { path = "../config" }
-llm = { path = "../llm" }
+network = { path = "../network", optional = true }
+config = { path = "../config", optional = true }
+llm = { path = "../llm", optional = true }
 tui = { path = "../tui" }
 
 # Serialization for heapless types
@@ -27,3 +26,8 @@ heapless = { workspace = true }
 [lib]
 name = "kernel"
 path = "src/lib.rs"
+
+[features]
+default = ["full"]
+full = ["network", "llm", "config"]
+uefi-minimal = []

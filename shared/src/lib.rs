@@ -3,6 +3,11 @@
 // Shared crate for moteOS
 // Common types, utilities, and data structures shared across crates
 
+pub mod boot_info;
+pub mod framebuffer;
+pub mod memory;
+pub mod timer;
+
 /// Color structure for pixel rendering
 ///
 /// Per Section 3.4 of technical specifications
@@ -125,3 +130,8 @@ pub enum FontError {
 pub enum ColorError {
     InvalidHex,
 }
+
+// Re-export shared boot types
+pub use boot_info::BootInfo;
+pub use framebuffer::{FramebufferInfo, PixelFormat};
+pub use memory::{MemoryKind, MemoryMap, MemoryRegion};

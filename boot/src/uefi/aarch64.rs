@@ -2,9 +2,9 @@
 // Handles UEFI boot services, Graphics Output Protocol (GOP), and memory map
 // Targets Raspberry Pi and other ARM64 UEFI systems
 
-use crate::framebuffer::{FramebufferInfo, PixelFormat};
-use crate::memory::{MemoryKind, MemoryMap, MemoryRegion};
-use crate::BootInfo;
+use crate::{BootInfo, FramebufferInfo, MemoryKind, MemoryMap, MemoryRegion, PixelFormat};
+use kernel::kernel_main;
+use core::fmt::Write;
 use uefi::prelude::*;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::data_types::Identify;
@@ -31,6 +31,8 @@ pub extern "efiapi" fn efi_main(
     // Clone the SystemTable so we can move it into exit_boot_services
     // This is safe because the system table pointer is valid and stable
     let st_boot = unsafe { st_boot_ref.unsafe_clone() };
+    let _ = st_boot_ref.stdout().clear();
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: booting kernel...");
     let bs = st_boot_ref.boot_services();
 
     // Acquire framebuffer via Graphics Output Protocol
@@ -102,15 +104,8 @@ pub extern "efiapi" fn efi_main(
         configure_mmu();
     }
 
-    // Call kernel_main
-    // Note: kernel_main should be defined in the kernel crate
-    // For now, we'll just halt
-    unsafe {
-        // ARM64 halt instruction
-        core::arch::asm!("wfi"); // Wait for interrupt
-    }
-
-    uefi::Status::SUCCESS
+    // Call kernel_main - this never returns
+    kernel_main(boot_info);
 }
 
 /// Acquire framebuffer via Graphics Output Protocol

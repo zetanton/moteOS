@@ -41,6 +41,9 @@ if [ ! -f "$OVMF_CODE" ]; then
     if [ -f "/usr/share/qemu/OVMF_CODE.fd" ]; then
         OVMF_CODE="/usr/share/qemu/OVMF_CODE.fd"
         OVMF_VARS="/usr/share/qemu/OVMF_VARS.fd"
+    elif [ -f "$PROJECT_ROOT/ovmf/OVMF_CODE.fd" ]; then
+        OVMF_CODE="$PROJECT_ROOT/ovmf/OVMF_CODE.fd"
+        OVMF_VARS="$PROJECT_ROOT/ovmf/OVMF_VARS.fd"
     elif [ -f "$PROJECT_ROOT/OVMF_CODE.fd" ]; then
         OVMF_CODE="$PROJECT_ROOT/OVMF_CODE.fd"
         OVMF_VARS="$PROJECT_ROOT/OVMF_VARS.fd"
@@ -79,6 +82,14 @@ QEMU_ARGS=(
     -no-reboot
 )
 
+# On Apple Silicon, force TCG to avoid HVF issues running x86_64 guests
+HOST_ARCH="$(uname -m)"
+if [ "$HOST_ARCH" = "arm64" ] || [ "$HOST_ARCH" = "aarch64" ]; then
+    QEMU_ARGS+=(
+        -accel tcg
+    )
+fi
+
 # Add UEFI firmware if available
 if [ -n "$OVMF_CODE" ] && [ -f "$OVMF_CODE" ]; then
     QEMU_ARGS+=(
@@ -95,18 +106,43 @@ echo -e "${YELLOW}The system will boot and you should see kernel output on seria
 echo -e "${YELLOW}Press Ctrl+C to stop the test${NC}"
 echo ""
 
-# Run QEMU with timeout (30 seconds)
-timeout 30s "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-test.log || {
-    EXIT_CODE=$?
-    if [ $EXIT_CODE -eq 124 ]; then
-        echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
-        exit 0
-    else
-        echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
-        echo -e "${YELLOW}Check /tmp/moteos-boot-test.log for details${NC}"
-        exit $EXIT_CODE
-    fi
-}
+# Detect timeout command (macOS may use gtimeout from coreutils)
+TIMEOUT_CMD=""
+if command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+fi
+
+# Run QEMU with timeout (30 seconds) if available, otherwise run without timeout
+if [ -n "$TIMEOUT_CMD" ]; then
+    "$TIMEOUT_CMD" 30s "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-test.log || {
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
+            exit 0
+        else
+            echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
+            echo -e "${YELLOW}Check /tmp/moteos-boot-test.log for details${NC}"
+            exit $EXIT_CODE
+        fi
+    }
+else
+    # macOS fallback: run QEMU with timeout using perl or just run for limited time
+    echo -e "${YELLOW}Note: timeout command not found, running QEMU for 30 seconds${NC}"
+    # Use a subshell that times out using perl's alarm, or just run and capture
+    "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-test.log &
+    QEMU_PID=$!
+    # Wait for QEMU to start outputting
+    sleep 2
+    # Run for 30 seconds total
+    (sleep 28; kill $QEMU_PID 2>/dev/null || true) &
+    KILL_PID=$!
+    wait $QEMU_PID 2>/dev/null || true
+    kill $KILL_PID 2>/dev/null || true
+    wait $KILL_PID 2>/dev/null || true
+    echo -e "${GREEN}✓ Boot test completed (30 seconds elapsed)${NC}"
+fi
 
 # Check log for successful boot indicators
 if grep -q "kernel_main\|moteOS\|Boot successful" /tmp/moteos-boot-test.log 2>/dev/null; then

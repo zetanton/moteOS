@@ -1,13 +1,13 @@
 // Timer support for moteOS
 // Configures HPET/APIC (x86_64) or ARM Generic Timer (ARM64) for timekeeping
 
-use spin::Mutex;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Global tick counter
-static TICKS: Mutex<u64> = Mutex::new(0);
+static TICKS: AtomicU64 = AtomicU64::new(0);
 
 /// Timer frequency in Hz
-static mut TIMER_FREQUENCY: u64 = 100; // Default to 100Hz
+static TIMER_FREQUENCY: AtomicU64 = AtomicU64::new(100); // Default to 100Hz
 
 /// Initialize the timer
 ///
@@ -25,7 +25,7 @@ static mut TIMER_FREQUENCY: u64 = 100; // Default to 100Hz
 /// This function must only be called once during boot initialization.
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn init_timer(frequency_hz: u64) {
-    TIMER_FREQUENCY = frequency_hz;
+    TIMER_FREQUENCY.store(frequency_hz, Ordering::Relaxed);
 
     // Try to initialize HPET first
     if init_hpet(frequency_hz).is_ok() {
@@ -55,7 +55,7 @@ unsafe fn init_hpet(_frequency_hz: u64) -> Result<(), ()> {
 ///
 /// APIC timer is available on all x86_64 systems and serves as a fallback.
 #[cfg(target_arch = "x86_64")]
-unsafe fn init_apic_timer(frequency_hz: u64) {
+unsafe fn init_apic_timer(_frequency_hz: u64) {
     // APIC timer initialization would go here
     // This requires:
     // 1. Enabling local APIC
@@ -71,14 +71,14 @@ unsafe fn init_apic_timer(frequency_hz: u64) {
 ///
 /// The tick count increments on each timer interrupt.
 pub fn get_ticks() -> u64 {
-    *TICKS.lock()
+    TICKS.load(Ordering::Relaxed)
 }
 
 /// Increment the tick counter
 ///
 /// This is called by the timer interrupt handler.
 pub fn increment_ticks() {
-    *TICKS.lock() += 1;
+    TICKS.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Sleep for a specified number of milliseconds
@@ -91,7 +91,7 @@ pub fn increment_ticks() {
 /// * `ms` - Number of milliseconds to sleep
 pub fn sleep_ms(ms: u64) {
     let start_ticks = get_ticks();
-    let ticks_to_wait = (ms * unsafe { TIMER_FREQUENCY }) / 1000;
+    let ticks_to_wait = (ms * TIMER_FREQUENCY.load(Ordering::Relaxed)) / 1000;
 
     // Busy wait until enough ticks have elapsed
     loop {
@@ -103,7 +103,7 @@ pub fn sleep_ms(ms: u64) {
         // Yield to allow interrupts
         #[cfg(target_arch = "x86_64")]
         unsafe {
-            x86_64::instructions::hlt();
+            core::arch::asm!("hlt");
         }
 
         #[cfg(target_arch = "aarch64")]
@@ -115,13 +115,13 @@ pub fn sleep_ms(ms: u64) {
 
 /// Get the timer frequency in Hz
 pub fn get_frequency() -> u64 {
-    unsafe { TIMER_FREQUENCY }
+    TIMER_FREQUENCY.load(Ordering::Relaxed)
 }
 
 // ARM64 implementation
 #[cfg(target_arch = "aarch64")]
 pub unsafe fn init_timer(frequency_hz: u64) {
-    TIMER_FREQUENCY = frequency_hz;
+    TIMER_FREQUENCY.store(frequency_hz, Ordering::Relaxed);
 
     // Configure ARM Generic Timer
     // This would involve:

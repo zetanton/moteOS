@@ -6,31 +6,50 @@
 //! This module implements the kernel_main() entry point and the main event loop
 //! that drives the operating system, handling input, network, and screen updates.
 
+#[cfg(not(feature = "uefi-minimal"))]
 extern crate alloc;
 
+#[cfg(feature = "uefi-minimal")]
+use shared::{BootInfo, Color, Rect};
+
+#[cfg(not(feature = "uefi-minimal"))]
 use alloc::boxed::Box;
+#[cfg(not(feature = "uefi-minimal"))]
 use alloc::string::String;
+#[cfg(not(feature = "uefi-minimal"))]
 use alloc::vec::Vec;
-use boot::BootInfo;
+#[cfg(not(feature = "uefi-minimal"))]
 use config::{decrypt_api_key, ConfigStorage, EfiConfigStorage, MoteConfig};
 use core::panic::PanicInfo;
+#[cfg(not(feature = "uefi-minimal"))]
 use llm::{GenerationConfig, LlmProvider, Message, Role};
-use network::{NetworkStack, poll_network_stack};
+#[cfg(not(feature = "uefi-minimal"))]
+use network::{poll_network_stack, NetworkStack};
+#[cfg(not(feature = "uefi-minimal"))]
+use shared::BootInfo;
+#[cfg(not(feature = "uefi-minimal"))]
 use spin::Mutex;
-use tui::{screens::ChatScreen, DARK_THEME, LIGHT_THEME, Screen, Theme};
+#[cfg(not(feature = "uefi-minimal"))]
+use tui::{screens::ChatScreen, Screen, Theme, DARK_THEME, LIGHT_THEME};
 
+#[cfg(not(feature = "uefi-minimal"))]
 pub mod event_loop;
+#[cfg(not(feature = "uefi-minimal"))]
 pub mod init;
+#[cfg(not(feature = "uefi-minimal"))]
 pub mod input;
+#[cfg(not(feature = "uefi-minimal"))]
 pub mod screen;
 
 // Global kernel state
+#[cfg(not(feature = "uefi-minimal"))]
 static GLOBAL_STATE: Mutex<Option<KernelState>> = Mutex::new(None);
 
 /// Kernel state structure
 ///
 /// Holds all the state needed to run the operating system, including
 /// network, configuration, screen, and conversation state.
+#[cfg(not(feature = "uefi-minimal"))]
 pub struct KernelState {
     /// Screen for rendering
     pub screen: Screen,
@@ -54,6 +73,7 @@ pub struct KernelState {
     pub is_generating: bool,
 }
 
+#[cfg(not(feature = "uefi-minimal"))]
 impl KernelState {
     /// Create a new kernel state
     pub fn new(
@@ -94,6 +114,26 @@ impl KernelState {
 /// # Panics
 ///
 /// This function never returns normally. It will panic if initialization fails.
+#[cfg(feature = "uefi-minimal")]
+#[no_mangle]
+pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
+    let fb = boot_info.framebuffer;
+    let bounds = Rect::new(0, 0, fb.width, fb.height);
+    fb.fill_rectangle_safe(bounds, Color::rgb(16, 16, 16));
+
+    loop {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::asm!("hlt");
+        }
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            core::arch::asm!("wfe");
+        }
+    }
+}
+
+#[cfg(not(feature = "uefi-minimal"))]
 #[no_mangle]
 pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     // Initialize heap allocator
@@ -112,7 +152,7 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
         config::ThemeChoice::Dark => &DARK_THEME,
         config::ThemeChoice::Light => &LIGHT_THEME,
     };
-    let screen = unsafe { Screen::new(boot_info.framebuffer, theme) };
+    let screen = unsafe { Screen::new(boot_info.framebuffer.into(), theme) };
 
     // Initialize network (if configured)
     let network = init::init_network(&config).ok();
