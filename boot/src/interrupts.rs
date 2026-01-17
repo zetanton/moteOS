@@ -97,10 +97,9 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
         if (status & 0x01) != 0 {
             // Data available, read scancode
             let scancode = data_port.read();
-            
-            // Handle scancode in kernel PS/2 driver
-            // Note: This requires the kernel to be initialized
-            #[cfg(not(feature = "uefi-minimal"))]
+
+            // Handle scancode in kernel PS/2 driver (only when the PS/2 module is built)
+            #[cfg(all(target_arch = "x86_64", not(feature = "uefi-minimal")))]
             {
                 kernel::ps2::handle_scancode(scancode);
             }

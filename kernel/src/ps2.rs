@@ -4,13 +4,14 @@
 //! It handles scancode reading, make/break code processing, and
 //! conversion to the config::Key format.
 
+#![no_std]
 #![cfg(target_arch = "x86_64")]
 
 extern crate alloc;
 
+use alloc::collections::VecDeque;
 use config::Key;
 use spin::Mutex;
-use alloc::collections::VecDeque;
 
 /// PS/2 controller ports
 const PS2_DATA_PORT: u16 = 0x60;
@@ -31,6 +32,9 @@ const SCANCODE_EXTENDED_PREFIX: u8 = 0xE0;
 
 /// Global keyboard buffer
 static KEY_BUFFER: Mutex<VecDeque<Key>> = Mutex::new(VecDeque::new());
+
+/// Scancode processor state guarded by a mutex so it is safe in interrupt context.
+static SCANCODE_PROCESSOR: Mutex<ScancodeProcessor> = Mutex::new(ScancodeProcessor::new());
 
 /// Initialize the PS/2 keyboard
 ///
@@ -197,47 +201,11 @@ fn process_scancode(scancode: u8, extended: bool) -> Option<Key> {
 ///
 /// * `scancode` - The raw scancode from the keyboard
 pub fn handle_scancode(scancode: u8) {
-    static mut STATE: ScancodeState = ScancodeState::Normal;
-    static mut EXTENDED: bool = false;
-    
-    match unsafe { *STATE } {
-        ScancodeState::Normal => {
-            if scancode == SCANCODE_EXTENDED_PREFIX {
-                unsafe { EXTENDED = true; }
-                return;
-            } else if scancode == SCANCODE_BREAK_PREFIX {
-                // Check if we're in extended mode
-                if unsafe { EXTENDED } {
-                    unsafe { *STATE = ScancodeState::ExtendedBreak; }
-                } else {
-                    unsafe { *STATE = ScancodeState::Break; }
-                }
-                return;
-            } else {
-                // Regular make code
-                if let Some(key) = process_scancode(scancode, unsafe { EXTENDED }) {
-                    let mut buffer = KEY_BUFFER.lock();
-                    buffer.push_back(key);
-                }
-                unsafe { EXTENDED = false; }
-            }
-        }
-        ScancodeState::Break => {
-            // This is the key that was released - we ignore it
-            unsafe {
-                *STATE = ScancodeState::Normal;
-                EXTENDED = false;
-            }
-        }
-        ScancodeState::ExtendedBreak => {
-            // Extended break code: E0 F0 <scancode>
-            // This is the actual scancode being released - ignore it
-            unsafe {
-                *STATE = ScancodeState::Normal;
-                EXTENDED = false;
-            }
-        }
-    }
+    let mut processor = SCANCODE_PROCESSOR.lock();
+    processor.handle(scancode, |key| {
+        let mut buffer = KEY_BUFFER.lock();
+        buffer.push_back(key);
+    });
 }
 
 /// Internal state for scancode processing
@@ -246,6 +214,53 @@ enum ScancodeState {
     Normal,
     Break,
     ExtendedBreak,
+}
+
+/// Processor encapsulating scancode state to avoid unsafe statics.
+/// Uses a short-held mutex so it is safe to call from the interrupt
+/// handler and from polling code without relying on `static mut`.
+struct ScancodeProcessor {
+    state: ScancodeState,
+    extended: bool,
+}
+
+impl ScancodeProcessor {
+    const fn new() -> Self {
+        Self {
+            state: ScancodeState::Normal,
+            extended: false,
+        }
+    }
+
+    fn handle<F: FnMut(Key)>(&mut self, scancode: u8, mut on_key: F) {
+        match self.state {
+            ScancodeState::Normal => {
+                if scancode == SCANCODE_EXTENDED_PREFIX {
+                    self.extended = true;
+                    return;
+                } else if scancode == SCANCODE_BREAK_PREFIX {
+                    // Break code follows; track whether it was extended.
+                    self.state = if self.extended {
+                        ScancodeState::ExtendedBreak
+                    } else {
+                        ScancodeState::Break
+                    };
+                    return;
+                } else {
+                    // Regular make code
+                    if let Some(key) = process_scancode(scancode, self.extended) {
+                        on_key(key);
+                    }
+                    self.extended = false;
+                }
+            }
+            ScancodeState::Break | ScancodeState::ExtendedBreak => {
+                // Key release, ignore but reset state.
+                self.state = ScancodeState::Normal;
+                self.extended = false;
+            }
+        }
+    }
 }
 
 /// Read a key from the keyboard buffer
