@@ -19,6 +19,7 @@ shared = { path = "../shared" }
 network = { path = "../network" }
 config = { path = "../config" }
 llm = { path = "../llm" }
+tui = { path = "../tui" }
 
 # Serialization for heapless types
 heapless = { workspace = true }

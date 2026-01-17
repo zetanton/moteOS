@@ -12,10 +12,12 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use boot::BootInfo;
-use config::{ConfigStorage, EfiConfigStorage, MoteConfig};
+use config::{decrypt_api_key, ConfigStorage, EfiConfigStorage, MoteConfig};
 use core::panic::PanicInfo;
-use llm::{CompletionResult, GenerationConfig, LlmProvider, Message, Role};
+use llm::{GenerationConfig, LlmProvider, Message, Role};
+use network::{NetworkStack, poll_network_stack};
 use spin::Mutex;
+use tui::{screens::ChatScreen, DARK_THEME, LIGHT_THEME, Screen, Theme};
 
 pub mod event_loop;
 pub mod init;
@@ -30,21 +32,51 @@ static GLOBAL_STATE: Mutex<Option<KernelState>> = Mutex::new(None);
 /// Holds all the state needed to run the operating system, including
 /// network, configuration, screen, and conversation state.
 pub struct KernelState {
+    /// Screen for rendering
+    pub screen: Screen,
+    /// Network stack (optional, None if not configured or failed to initialize)
+    pub network: Option<NetworkStack>,
     /// Configuration
     pub config: MoteConfig,
+    /// Current LLM provider
+    pub current_provider: Box<dyn LlmProvider>,
+    /// Current provider name
+    pub current_provider_name: String,
+    /// Current model name
+    pub current_model: String,
+    /// Chat screen state
+    pub chat_screen: ChatScreen,
     /// Current conversation messages
     pub conversation: Vec<Message>,
     /// Whether setup has been completed
     pub setup_complete: bool,
+    /// Whether we're currently generating a response
+    pub is_generating: bool,
 }
 
 impl KernelState {
     /// Create a new kernel state
-    pub fn new(config: MoteConfig, setup_complete: bool) -> Self {
+    pub fn new(
+        screen: Screen,
+        network: Option<NetworkStack>,
+        config: MoteConfig,
+        provider: Box<dyn LlmProvider>,
+        provider_name: String,
+        model: String,
+        setup_complete: bool,
+    ) -> Self {
+        let chat_screen = ChatScreen::new(provider_name.clone(), model.clone());
         Self {
+            screen,
+            network,
             config,
+            current_provider: provider,
+            current_provider_name: provider_name,
+            current_model: model,
+            chat_screen,
             conversation: Vec::new(),
             setup_complete,
+            is_generating: false,
         }
     }
 }
@@ -67,10 +99,6 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     // Initialize heap allocator
     init::init_heap(boot_info.heap_start, boot_info.heap_size);
 
-    // Initialize framebuffer and screen
-    // Note: This is a stub until TUI is implemented
-    // let screen = Screen::new(boot_info.framebuffer, &DARK_THEME);
-
     // Load configuration
     let config_storage = EfiConfigStorage;
     let setup_complete = config_storage.exists();
@@ -79,18 +107,38 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
         Ok(None) | Err(_) => MoteConfig::default(),
     };
 
-    // Initialize network (if configured)
-    // Note: This will be called once network stack is complete
-    // let network = init::init_network(&config).ok();
+    // Initialize framebuffer and screen
+    let theme = match config.preferences.theme {
+        config::ThemeChoice::Dark => &DARK_THEME,
+        config::ThemeChoice::Light => &LIGHT_THEME,
+    };
+    let screen = unsafe { Screen::new(boot_info.framebuffer, theme) };
 
-    // Initialize LLM provider (if configured)
-    // Note: This will be called once LLM providers are implemented
-    // let provider = init::init_provider(&config);
+    // Initialize network (if configured)
+    let network = init::init_network(&config).ok();
+
+    // Initialize LLM provider
+    let (provider, provider_name, model) = match init::init_provider(&config, network.as_ref()) {
+        Ok((p, name, m)) => (p, name, m),
+        Err(_) => {
+            // Fallback to a dummy provider or panic
+            // For now, we'll create a minimal provider that will fail gracefully
+            panic!("Failed to initialize LLM provider");
+        }
+    };
 
     // Set up global state
     {
         let mut state = GLOBAL_STATE.lock();
-        *state = Some(KernelState::new(config, setup_complete));
+        *state = Some(KernelState::new(
+            screen,
+            network,
+            config,
+            provider,
+            provider_name,
+            model,
+            setup_complete,
+        ));
     }
 
     // Enter main event loop

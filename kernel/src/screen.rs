@@ -10,15 +10,15 @@ use crate::GLOBAL_STATE;
 /// Renders the current application state to the framebuffer.
 /// This is called from the main event loop.
 pub fn update_screen() {
-    let state = GLOBAL_STATE.lock();
-    if let Some(ref kernel_state) = *state {
+    let mut state = GLOBAL_STATE.lock();
+    if let Some(ref mut kernel_state) = *state {
         // Determine what to render based on state
         if !kernel_state.setup_complete {
             // Render setup wizard
-            render_setup_wizard();
+            render_setup_wizard(kernel_state);
         } else {
             // Render chat screen
-            render_chat_screen();
+            render_chat_screen(kernel_state);
         }
     }
 }
@@ -26,39 +26,50 @@ pub fn update_screen() {
 /// Render the setup wizard screen
 ///
 /// Displays the setup wizard UI for initial configuration.
-fn render_setup_wizard() {
-    // TODO: Implement once TUI framework is complete
-    // This will:
-    // 1. Clear the screen
-    // 2. Render wizard UI elements
-    // 3. Render current wizard state
-    // 4. Present the framebuffer
+fn render_setup_wizard(kernel_state: &mut crate::KernelState) {
+    // Clear the screen
+    kernel_state.screen.clear();
+    
+    // TODO: Implement full wizard UI once wizard screen is integrated
+    // For now, display a simple message indicating setup is needed
+    let bounds = kernel_state.screen.bounds();
+    let Some((char_width, char_height)) = kernel_state.screen.char_size() else {
+        return;
+    };
+    
+    let theme = kernel_state.screen.theme();
+    let welcome_text = "Welcome to moteOS Setup";
+    let text_width = welcome_text.chars().count() * char_width;
+    let text_x = bounds.x + (bounds.width / 2) - (text_width / 2);
+    let text_y = bounds.y + (bounds.height / 2);
+    
+    kernel_state.screen.draw_text(text_x, text_y, welcome_text, theme.text_primary);
+    
+    let instruction_text = "Press any key to continue...";
+    let inst_width = instruction_text.chars().count() * char_width;
+    let inst_x = bounds.x + (bounds.width / 2) - (inst_width / 2);
+    let inst_y = text_y + char_height * 2;
+    
+    kernel_state.screen.draw_text(inst_x, inst_y, instruction_text, theme.text_secondary);
 }
 
 /// Render the chat screen
 ///
 /// Displays the main chat interface with conversation history and input.
-fn render_chat_screen() {
-    // TODO: Implement once TUI framework is complete
-    // This will:
-    // 1. Clear the screen
-    // 2. Render header (provider, model, status)
-    // 3. Render conversation messages
-    // 4. Render input area
-    // 5. Render footer (hotkeys)
-    // 6. Present the framebuffer
+fn render_chat_screen(kernel_state: &mut crate::KernelState) {
+    // Clear the screen
+    kernel_state.screen.clear();
+    
+    // Update connection status based on network state
+    let status = if kernel_state.network.is_some() {
+        tui::screens::ConnectionStatus::Connected
+    } else {
+        tui::screens::ConnectionStatus::Disconnected
+    };
+    kernel_state.chat_screen.set_status(status);
+    
+    // Render the chat screen
+    kernel_state.chat_screen.render(&mut kernel_state.screen);
+    
+    // Note: Screen presentation is handled by the TUI framework
 }
-
-// TODO: Add more screen rendering functions as screens are added
-//
-// /// Render the help screen
-// fn render_help_screen() { ... }
-//
-// /// Render the provider selection screen
-// fn render_provider_select() { ... }
-//
-// /// Render the model selection screen
-// fn render_model_select() { ... }
-//
-// /// Render the configuration screen
-// fn render_config_screen() { ... }
