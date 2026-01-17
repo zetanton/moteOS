@@ -111,14 +111,6 @@ pub fn efi_main(
         MemoryType::LOADER_DATA
     );
 
-    // Convert memory map storage to our MemoryMap format
-    // Note: This is a simplified conversion - in a real implementation,
-    // we'd need to properly parse the UEFI memory map
-    // Create empty memory map for now
-    static EMPTY_REGIONS: [MemoryRegion; 0] = [];
-    let memory_regions: &'static [MemoryRegion] = &EMPTY_REGIONS;
-    let memory_map = MemoryMap::new(memory_regions);
-
     // Get ACPI RSDP address (if available)
     let rsdp_addr = None; // TODO: Locate ACPI RSDP
 
