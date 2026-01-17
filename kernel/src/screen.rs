@@ -26,16 +26,31 @@ pub fn update_screen() {
 /// Render the setup wizard screen
 ///
 /// Displays the setup wizard UI for initial configuration.
-fn render_setup_wizard(_kernel_state: &mut crate::KernelState) {
-    // TODO: Implement once TUI framework is complete
-    // This will:
-    // 1. Clear the screen
-    // 2. Render wizard UI elements
-    // 3. Render current wizard state
-    // 4. Present the framebuffer
+fn render_setup_wizard(kernel_state: &mut crate::KernelState) {
+    // Clear the screen
+    kernel_state.screen.clear();
     
-    // For now, just clear the screen
-    // kernel_state.screen.clear();
+    // TODO: Implement full wizard UI once wizard screen is integrated
+    // For now, display a simple message indicating setup is needed
+    let bounds = kernel_state.screen.bounds();
+    let Some((char_width, char_height)) = kernel_state.screen.char_size() else {
+        return;
+    };
+    
+    let theme = kernel_state.screen.theme();
+    let welcome_text = "Welcome to moteOS Setup";
+    let text_width = welcome_text.chars().count() * char_width;
+    let text_x = bounds.x + (bounds.width / 2) - (text_width / 2);
+    let text_y = bounds.y + (bounds.height / 2);
+    
+    kernel_state.screen.draw_text(text_x, text_y, welcome_text, theme.text_primary);
+    
+    let instruction_text = "Press any key to continue...";
+    let inst_width = instruction_text.chars().count() * char_width;
+    let inst_x = bounds.x + (bounds.width / 2) - (inst_width / 2);
+    let inst_y = text_y + char_height * 2;
+    
+    kernel_state.screen.draw_text(inst_x, inst_y, instruction_text, theme.text_secondary);
 }
 
 /// Render the chat screen

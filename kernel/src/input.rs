@@ -77,10 +77,11 @@ fn convert_key(key: Key) -> TuiKey {
 fn process_key(key: Key) {
     let mut state = GLOBAL_STATE.lock();
     if let Some(ref mut kernel_state) = *state {
-        // If setup is not complete, pass to wizard
+        // If setup is not complete, handle setup wizard input
         if !kernel_state.setup_complete {
-            // TODO: Pass to setup wizard once TUI is implemented
-            // wizard.handle_input(key);
+            // For now, any key completes setup (full wizard implementation pending)
+            // In a full implementation, this would pass to SetupWizard::handle_input()
+            kernel_state.setup_complete = true;
             return;
         }
 
