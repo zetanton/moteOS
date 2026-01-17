@@ -58,4 +58,37 @@ pub enum NetError {
 
     #[error("DNS server failure")]
     DnsServerFailure,
+
+    #[error("TLS error: {0}")]
+    TlsError(String),
+
+    #[error("TLS handshake failed: {0}")]
+    TlsHandshakeFailed(String),
+
+    #[error("TLS certificate verification failed: {0}")]
+    TlsCertificateError(String),
+
+    #[error("TLS invalid server name: {0}")]
+    TlsInvalidServerName(String),
+
+    #[error("TLS unsupported cipher suite")]
+    TlsUnsupportedCipherSuite,
+
+    #[error("TLS connection closed")]
+    TlsConnectionClosed,
+
+    #[error("TLS protocol error: {0}")]
+    TlsProtocolError(String),
+
+    #[error("TCP connection failed: {0}")]
+    TcpConnectionFailed(String),
+
+    #[error("TCP socket not found")]
+    TcpSocketNotFound,
+
+    #[error("TCP send buffer full")]
+    TcpSendBufferFull,
+
+    #[error("TCP receive error")]
+    TcpReceiveError,
 }
