@@ -28,5 +28,7 @@ p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 rand_core = { version = "0.6", default-features = false }
 heapless = "0.8"
 
-# For certificate parsing
+# For certificate verification
 webpki = { version = "0.102", default-features = false, features = ["alloc"] }
+webpki-roots = { version = "0.26", default-features = false }
+x509-parser = { version = "0.16", default-features = false, features = ["verify"] }
