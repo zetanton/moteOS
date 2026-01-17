@@ -22,3 +22,4 @@ pub use screen::{BoxStyle, Screen};
 pub use theme::{Theme, DARK_THEME, LIGHT_THEME};
 pub use types::{CursorDirection, Key, Point, Rect, WidgetEvent};
 pub use widget::Widget;
+pub use widgets::{InputWidget, MessageRole, MessageWidget};
