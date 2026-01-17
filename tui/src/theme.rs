@@ -36,14 +36,12 @@ pub struct Theme {
     pub provider_local: Color,
 }
 
-/// Helper macro to unwrap Color::from_hex at compile time
-macro_rules! hex_color {
-    ($hex:expr) => {{
-        match Color::from_hex($hex) {
-            Ok(color) => color,
-            Err(_) => panic!("Invalid hex color"),
-        }
-    }};
+/// Helper const function to unwrap Color::from_hex at compile time
+const fn hex_color(hex: &str) -> Color {
+    match Color::from_hex(hex) {
+        Ok(color) => color,
+        Err(_) => panic!("Invalid hex color"),
+    }
 }
 
 /// Dark theme color palette (GitHub Dark inspired)
@@ -60,30 +58,30 @@ macro_rules! hex_color {
 /// Accent Assistant: #A371F7
 pub const DARK_THEME: Theme = Theme {
     // Background colors
-    background: hex_color!("#0D1117"),
-    surface: hex_color!("#161B22"),
-    border: hex_color!("#21262D"),
+    background: hex_color("#0D1117"),
+    surface: hex_color("#161B22"),
+    border: hex_color("#21262D"),
 
     // Text colors
-    text_primary: hex_color!("#F0F6FC"),
-    text_secondary: hex_color!("#C9D1D9"),
-    text_tertiary: hex_color!("#8B949E"),
-    text_disabled: hex_color!("#484F58"),
+    text_primary: hex_color("#F0F6FC"),
+    text_secondary: hex_color("#C9D1D9"),
+    text_tertiary: hex_color("#8B949E"),
+    text_disabled: hex_color("#484F58"),
 
     // Accent colors
-    accent_primary: hex_color!("#58A6FF"),
-    accent_success: hex_color!("#7EE787"),
-    accent_warning: hex_color!("#FFA657"),
-    accent_error: hex_color!("#FF7B72"),
-    accent_assistant: hex_color!("#A371F7"),
-    accent_code: hex_color!("#79C0FF"),
+    accent_primary: hex_color("#58A6FF"),
+    accent_success: hex_color("#7EE787"),
+    accent_warning: hex_color("#FFA657"),
+    accent_error: hex_color("#FF7B72"),
+    accent_assistant: hex_color("#A371F7"),
+    accent_code: hex_color("#79C0FF"),
 
     // Provider brand colors
-    provider_openai: hex_color!("#10A37F"),
-    provider_anthropic: hex_color!("#D4A574"),
-    provider_groq: hex_color!("#F55036"),
-    provider_xai: hex_color!("#FFFFFF"),
-    provider_local: hex_color!("#7C3AED"),
+    provider_openai: hex_color("#10A37F"),
+    provider_anthropic: hex_color("#D4A574"),
+    provider_groq: hex_color("#F55036"),
+    provider_xai: hex_color("#FFFFFF"),
+    provider_local: hex_color("#7C3AED"),
 };
 
 /// Light theme color palette (GitHub Light inspired)
@@ -100,30 +98,30 @@ pub const DARK_THEME: Theme = Theme {
 /// Accent Assistant: #8250DF
 pub const LIGHT_THEME: Theme = Theme {
     // Background colors
-    background: hex_color!("#FFFFFF"),
-    surface: hex_color!("#F6F8FA"),
-    border: hex_color!("#D0D7DE"),
+    background: hex_color("#FFFFFF"),
+    surface: hex_color("#F6F8FA"),
+    border: hex_color("#D0D7DE"),
 
     // Text colors
-    text_primary: hex_color!("#1F2328"),
-    text_secondary: hex_color!("#424A53"),
-    text_tertiary: hex_color!("#656D76"),
-    text_disabled: hex_color!("#8C959F"),
+    text_primary: hex_color("#1F2328"),
+    text_secondary: hex_color("#424A53"),
+    text_tertiary: hex_color("#656D76"),
+    text_disabled: hex_color("#8C959F"),
 
     // Accent colors
-    accent_primary: hex_color!("#0969DA"),
-    accent_success: hex_color!("#1A7F37"),
-    accent_warning: hex_color!("#9A6700"),
-    accent_error: hex_color!("#CF222E"),
-    accent_assistant: hex_color!("#8250DF"),
-    accent_code: hex_color!("#0550AE"),
+    accent_primary: hex_color("#0969DA"),
+    accent_success: hex_color("#1A7F37"),
+    accent_warning: hex_color("#9A6700"),
+    accent_error: hex_color("#CF222E"),
+    accent_assistant: hex_color("#8250DF"),
+    accent_code: hex_color("#0550AE"),
 
     // Provider brand colors
-    provider_openai: hex_color!("#10A37F"),
-    provider_anthropic: hex_color!("#D4A574"),
-    provider_groq: hex_color!("#F55036"),
-    provider_xai: hex_color!("#000000"),
-    provider_local: hex_color!("#7C3AED"),
+    provider_openai: hex_color("#10A37F"),
+    provider_anthropic: hex_color("#D4A574"),
+    provider_groq: hex_color("#F55036"),
+    provider_xai: hex_color("#000000"),
+    provider_local: hex_color("#7C3AED"),
 };
 
 impl Theme {

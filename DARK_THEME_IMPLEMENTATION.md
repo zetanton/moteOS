@@ -10,6 +10,10 @@ Implemented a complete color system and dark theme for the moteOS TUI framework,
 
 ## Implementation Details
 
+### Key Design Decisions
+
+**Const Function for Hex Parsing**: The theme uses a const helper function `hex_color()` instead of a macro to ensure all color parsing happens at compile time. This function wraps `Color::from_hex()` (which is itself const) and uses const panic for error handling, allowing all theme colors to be evaluated at compile time with zero runtime overhead.
+
 ### Files Created
 
 1. **`tui/src/colors.rs`** (207 lines)
@@ -123,10 +127,11 @@ All colors match the PRD specifications exactly:
 - ✅ Zero runtime overhead for theme access
 
 ### Performance
-- ✅ Theme constants are compile-time computed
+- ✅ Theme constants are compile-time computed using const functions
 - ✅ Zero-cost abstractions
 - ✅ Efficient hex parsing (O(1) for each digit)
 - ✅ Optional blending with floating-point math
+- ✅ No runtime overhead for theme color access
 
 ### Safety
 - ✅ Const functions where possible
