@@ -209,6 +209,14 @@ fn get_min(block: &BlockQ4K, i: usize) -> f32 {
     val as f32
 }
 
+/// Simple 64-bit Xorshift random number generator
+pub fn xorshift64(mut seed: u64) -> u64 {
+    seed ^= seed << 13;
+    seed ^= seed >> 7;
+    seed ^= seed << 17;
+    seed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

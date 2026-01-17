@@ -128,17 +128,22 @@ impl KvCache {
         }
     }
     
-    /// Append K and V vectors for a specific layer
+    /// Append K and V vectors for a specific layer at the current position
     pub fn append(&mut self, layer: usize, k: &[f32], v: &[f32]) {
+        self.append_at(layer, self.current_pos, k, v);
+    }
+
+    /// Append K and V vectors for a specific layer at a specific position
+    pub fn append_at(&mut self, layer: usize, pos: usize, k: &[f32], v: &[f32]) {
         if layer >= self.num_layers {
             return;
         }
         
-        if self.current_pos >= self.max_seq_len {
+        if pos >= self.max_seq_len {
             return;
         }
         
-        let pos_offset = self.current_pos * self.num_heads * self.head_dim;
+        let pos_offset = pos * self.num_heads * self.head_dim;
         let cache_size = self.num_heads * self.head_dim;
         
         if pos_offset + cache_size <= self.k_cache[layer].len() {
@@ -240,6 +245,11 @@ impl Transformer {
         // we'll use the last token's representation directly
         let logits = self.output_projection(&x)?;
         
+        // 4. Advance cache position by seq_len
+        for _ in 0..seq_len {
+            kv_cache.advance();
+        }
+        
         Ok(logits)
     }
     
@@ -319,11 +329,7 @@ impl Transformer {
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_heads;
         let head_dim = self.config.head_dim;
-        let seq_len = if kv_cache.current_pos() == 0 {
-            x.len() / hidden_size
-        } else {
-            1 // Autoregressive: processing one token at a time
-        };
+        let seq_len = x.len() / hidden_size;
         
         // 1. QKV projection
         // Input: x (seq_len * hidden_size)
@@ -396,12 +402,7 @@ impl Transformer {
         for pos in 0..seq_len {
             let k_slice = &k_rope[pos * num_heads * head_dim..(pos + 1) * num_heads * head_dim];
             let v_slice = &v[pos * num_heads * head_dim..(pos + 1) * num_heads * head_dim];
-            kv_cache.append(layer_idx, k_slice, v_slice);
-        }
-        
-        // Advance cache position
-        for _ in 0..seq_len {
-            kv_cache.advance();
+            kv_cache.append_at(layer_idx, kv_cache.current_pos() + pos, k_slice, v_slice);
         }
         
         // 7. Compute attention scores: Q @ K^T / sqrt(head_dim)

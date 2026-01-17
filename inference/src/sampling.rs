@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use crate::ops::softmax;
+use crate::ops::{softmax, xorshift64};
 
 /// Sample a token from logits using various techniques
 pub fn sample(
@@ -93,11 +93,4 @@ pub fn sample(
     
     // Fallback to the most likely token
     logits.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0 as u32
-}
-
-fn xorshift64(mut seed: u64) -> u64 {
-    seed ^= seed << 13;
-    seed ^= seed >> 7;
-    seed ^= seed << 17;
-    seed
 }

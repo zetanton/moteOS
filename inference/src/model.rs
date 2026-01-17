@@ -4,6 +4,7 @@ use alloc::format;
 use crate::transformer::{Transformer, KvCache, ModelConfig, ModelWeights};
 use crate::tokenizer::Tokenizer;
 use crate::sampling::sample;
+use crate::ops::xorshift64;
 use crate::error::ModelError;
 
 use llm::{LlmProvider, ModelInfo, Message, Role, GenerationConfig, CompletionResult, FinishReason, LlmError};
@@ -202,11 +203,4 @@ impl LlmProvider for LocalModel {
         // Local model doesn't need an API key
         Ok(())
     }
-}
-
-fn xorshift64(mut seed: u64) -> u64 {
-    seed ^= seed << 13;
-    seed ^= seed >> 7;
-    seed ^= seed << 17;
-    seed
 }
