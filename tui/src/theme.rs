@@ -135,7 +135,7 @@ impl Theme {
     }
 
     /// Get provider color by name
-    pub const fn get_provider_color(&self, provider: &str) -> Option<Color> {
+    pub fn get_provider_color(&self, provider: &str) -> Option<Color> {
         match provider {
             "openai" => Some(self.provider_openai),
             "anthropic" => Some(self.provider_anthropic),
