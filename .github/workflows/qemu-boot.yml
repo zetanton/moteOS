@@ -1,0 +1,37 @@
+name: QEMU Boot Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  boot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 ovmf xorriso
+
+      - name: Install Rust target
+        run: |
+          rustup target add x86_64-unknown-uefi
+
+      - name: Build UEFI ISO
+        run: make iso-uefi
+
+      - name: Run boot test (headless)
+        run: |
+          make test-boot
+        timeout-minutes: 5
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moteos-boot-test-log
+          path: /tmp/moteos-boot-test.log
