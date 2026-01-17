@@ -1,0 +1,27 @@
+# Cargo configuration for moteOS cross-compilation
+# Supports x86_64 and aarch64 architectures
+
+[build]
+# Default target (can be overridden with --target)
+# target = "x86_64-unknown-uefi"
+
+# Target-specific configurations
+[target.x86_64-unknown-uefi]
+# x86_64 UEFI target uses default linker
+# No custom linker script needed for UEFI
+
+[target.aarch64-unknown-uefi]
+# ARM64 UEFI target configuration for Raspberry Pi
+linker = "aarch64-linux-gnu-ld"
+rustflags = [
+    "-C", "link-arg=-Tlinker-aarch64.ld",
+    "-C", "link-arg=-nostdlib",
+    "-C", "link-arg=-z", "max-page-size=4096",
+    "-C", "link-arg=-z", "common-page-size=4096",
+]
+
+# Additional linker flags for ARM64
+[target.aarch64-unknown-uefi.linker-flags]
+"-T" = "linker-aarch64.ld"
+"-nostdlib" = ""
+"-z" = ["max-page-size=4096", "common-page-size=4096"]
