@@ -13,11 +13,16 @@ use alloc::vec::Vec;
 use network::{get_network_stack, HttpClient};
 use smoltcp::wire::Ipv4Address;
 
-const DEFAULT_BASE_URL: &str = "https://api.x.ai";
+const DEFAULT_BASE_URL: &str = "https://api.groq.com/openai";
 const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
-const SUPPORTED_MODELS: [&str; 2] = ["grok-2", "grok-2-mini"];
+const SUPPORTED_MODELS: [&str; 4] = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+];
 
-pub struct XaiClient {
+pub struct GroqClient {
     api_key: String,
     http_client: HttpClient,
     base_url: String,
@@ -26,14 +31,14 @@ pub struct XaiClient {
     models: Vec<ModelInfo>,
 }
 
-impl XaiClient {
+impl GroqClient {
     pub fn new(
         api_key: String,
         dns_server: Ipv4Address,
         get_time_ms: fn() -> i64,
         sleep_ms: Option<fn(i64)>,
     ) -> Self {
-        Self::new_with_base_url(api_key, dns_server, DEFAULT_BASE_URL.to_string(), get_time_ms, sleep_ms)
+        Self::new_with_base_url(api_key, dns_server, DEFAULT_BASE_URL.into(), get_time_ms, sleep_ms)
     }
 
     pub fn new_with_base_url(
@@ -44,8 +49,25 @@ impl XaiClient {
         sleep_ms: Option<fn(i64)>,
     ) -> Self {
         let models = Vec::from([
-            ModelInfo::new("grok-2".into(), "Grok 2".into(), 128_000, true),
-            ModelInfo::new("grok-2-mini".into(), "Grok 2 Mini".into(), 128_000, true),
+            ModelInfo::new(
+                "llama-3.3-70b-versatile".into(),
+                "Llama 3.3 70B Versatile".into(),
+                128_000,
+                true,
+            ),
+            ModelInfo::new(
+                "llama-3.1-8b-instant".into(),
+                "Llama 3.1 8B Instant".into(),
+                128_000,
+                true,
+            ),
+            ModelInfo::new(
+                "mixtral-8x7b-32768".into(),
+                "Mixtral 8x7B 32k".into(),
+                32_768,
+                true,
+            ),
+            ModelInfo::new("gemma2-9b-it".into(), "Gemma 2 9B IT".into(), 8_192, true),
         ]);
 
         Self {
@@ -68,9 +90,9 @@ impl XaiClient {
     }
 }
 
-impl LlmProvider for XaiClient {
+impl LlmProvider for GroqClient {
     fn name(&self) -> &str {
-        "xAI"
+        "Groq"
     }
 
     fn models(&self) -> &[ModelInfo] {
@@ -78,7 +100,7 @@ impl LlmProvider for XaiClient {
     }
 
     fn default_model(&self) -> &str {
-        "grok-2"
+        "llama-3.3-70b-versatile"
     }
 
     fn complete(
@@ -144,11 +166,7 @@ impl LlmProvider for XaiClient {
             apply_chunk_to_text(data, &mut full_text, &mut finish_reason, &mut done, &mut on_token);
         });
 
-        Ok(CompletionResult::new(
-            full_text,
-            None,
-            finish_reason,
-        ))
+        Ok(CompletionResult::new(full_text, None, finish_reason))
     }
 
     fn validate_api_key(&self) -> Result<(), LlmError> {
@@ -158,3 +176,4 @@ impl LlmProvider for XaiClient {
         Ok(())
     }
 }
+

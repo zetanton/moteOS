@@ -13,7 +13,7 @@ pub mod streaming;
 pub mod types;
 
 pub use error::LlmError;
-pub use providers::XaiClient;
+pub use providers::{AnthropicClient, GroqClient, OpenAiClient, XaiClient};
 pub use types::{CompletionResult, FinishReason, GenerationConfig, Message, ModelInfo, Role};
 
 /// Trait for LLM providers.

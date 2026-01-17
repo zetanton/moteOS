@@ -13,11 +13,10 @@ use alloc::vec::Vec;
 use network::{get_network_stack, HttpClient};
 use smoltcp::wire::Ipv4Address;
 
-const DEFAULT_BASE_URL: &str = "https://api.x.ai";
+const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
-const SUPPORTED_MODELS: [&str; 2] = ["grok-2", "grok-2-mini"];
 
-pub struct XaiClient {
+pub struct OpenAiClient {
     api_key: String,
     http_client: HttpClient,
     base_url: String,
@@ -26,14 +25,14 @@ pub struct XaiClient {
     models: Vec<ModelInfo>,
 }
 
-impl XaiClient {
+impl OpenAiClient {
     pub fn new(
         api_key: String,
         dns_server: Ipv4Address,
         get_time_ms: fn() -> i64,
         sleep_ms: Option<fn(i64)>,
     ) -> Self {
-        Self::new_with_base_url(api_key, dns_server, DEFAULT_BASE_URL.to_string(), get_time_ms, sleep_ms)
+        Self::new_with_base_url(api_key, dns_server, DEFAULT_BASE_URL.into(), get_time_ms, sleep_ms)
     }
 
     pub fn new_with_base_url(
@@ -44,8 +43,12 @@ impl XaiClient {
         sleep_ms: Option<fn(i64)>,
     ) -> Self {
         let models = Vec::from([
-            ModelInfo::new("grok-2".into(), "Grok 2".into(), 128_000, true),
-            ModelInfo::new("grok-2-mini".into(), "Grok 2 Mini".into(), 128_000, true),
+            ModelInfo::new("gpt-4o".into(), "GPT-4o".into(), 128_000, true),
+            ModelInfo::new("gpt-4o-mini".into(), "GPT-4o Mini".into(), 128_000, true),
+            ModelInfo::new("gpt-4-turbo".into(), "GPT-4 Turbo".into(), 128_000, true),
+            ModelInfo::new("o1".into(), "O1".into(), 200_000, false),
+            ModelInfo::new("o1-mini".into(), "O1 Mini".into(), 128_000, false),
+            ModelInfo::new("o3-mini".into(), "O3 Mini".into(), 128_000, false),
         ]);
 
         Self {
@@ -62,15 +65,11 @@ impl XaiClient {
         let base = self.base_url.trim_end_matches('/');
         format!("{base}{CHAT_COMPLETIONS_PATH}")
     }
-
-    fn is_supported_model(model: &str) -> bool {
-        SUPPORTED_MODELS.iter().any(|m| *m == model)
-    }
 }
 
-impl LlmProvider for XaiClient {
+impl LlmProvider for OpenAiClient {
     fn name(&self) -> &str {
-        "xAI"
+        "OpenAI"
     }
 
     fn models(&self) -> &[ModelInfo] {
@@ -78,7 +77,7 @@ impl LlmProvider for XaiClient {
     }
 
     fn default_model(&self) -> &str {
-        "grok-2"
+        "gpt-4o"
     }
 
     fn complete(
@@ -90,9 +89,6 @@ impl LlmProvider for XaiClient {
     ) -> Result<CompletionResult, LlmError> {
         if self.api_key.trim().is_empty() {
             return Err(LlmError::AuthError("missing API key".into()));
-        }
-        if !Self::is_supported_model(model) {
-            return Err(LlmError::InvalidModel(model.into()));
         }
 
         let url = self.endpoint_url();
@@ -144,11 +140,7 @@ impl LlmProvider for XaiClient {
             apply_chunk_to_text(data, &mut full_text, &mut finish_reason, &mut done, &mut on_token);
         });
 
-        Ok(CompletionResult::new(
-            full_text,
-            None,
-            finish_reason,
-        ))
+        Ok(CompletionResult::new(full_text, None, finish_reason))
     }
 
     fn validate_api_key(&self) -> Result<(), LlmError> {
@@ -158,3 +150,4 @@ impl LlmProvider for XaiClient {
         Ok(())
     }
 }
+
