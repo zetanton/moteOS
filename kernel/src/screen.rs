@@ -10,15 +10,15 @@ use crate::GLOBAL_STATE;
 /// Renders the current application state to the framebuffer.
 /// This is called from the main event loop.
 pub fn update_screen() {
-    let state = GLOBAL_STATE.lock();
-    if let Some(ref kernel_state) = *state {
+    let mut state = GLOBAL_STATE.lock();
+    if let Some(ref mut kernel_state) = *state {
         // Determine what to render based on state
         if !kernel_state.setup_complete {
             // Render setup wizard
-            render_setup_wizard();
+            render_setup_wizard(kernel_state);
         } else {
             // Render chat screen
-            render_chat_screen();
+            render_chat_screen(kernel_state);
         }
     }
 }
@@ -26,39 +26,35 @@ pub fn update_screen() {
 /// Render the setup wizard screen
 ///
 /// Displays the setup wizard UI for initial configuration.
-fn render_setup_wizard() {
+fn render_setup_wizard(_kernel_state: &mut crate::KernelState) {
     // TODO: Implement once TUI framework is complete
     // This will:
     // 1. Clear the screen
     // 2. Render wizard UI elements
     // 3. Render current wizard state
     // 4. Present the framebuffer
+    
+    // For now, just clear the screen
+    // kernel_state.screen.clear();
 }
 
 /// Render the chat screen
 ///
 /// Displays the main chat interface with conversation history and input.
-fn render_chat_screen() {
-    // TODO: Implement once TUI framework is complete
-    // This will:
-    // 1. Clear the screen
-    // 2. Render header (provider, model, status)
-    // 3. Render conversation messages
-    // 4. Render input area
-    // 5. Render footer (hotkeys)
-    // 6. Present the framebuffer
+fn render_chat_screen(kernel_state: &mut crate::KernelState) {
+    // Clear the screen
+    kernel_state.screen.clear();
+    
+    // Update connection status based on network state
+    let status = if kernel_state.network.is_some() {
+        tui::screens::ConnectionStatus::Connected
+    } else {
+        tui::screens::ConnectionStatus::Disconnected
+    };
+    kernel_state.chat_screen.set_status(status);
+    
+    // Render the chat screen
+    kernel_state.chat_screen.render(&mut kernel_state.screen);
+    
+    // Note: Screen presentation is handled by the TUI framework
 }
-
-// TODO: Add more screen rendering functions as screens are added
-//
-// /// Render the help screen
-// fn render_help_screen() { ... }
-//
-// /// Render the provider selection screen
-// fn render_provider_select() { ... }
-//
-// /// Render the model selection screen
-// fn render_model_select() { ... }
-//
-// /// Render the configuration screen
-// fn render_config_screen() { ... }

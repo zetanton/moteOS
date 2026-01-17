@@ -3,8 +3,10 @@
 //! This module implements the main event loop that drives the operating system.
 //! The loop handles input events, network polling, and screen updates.
 
-use crate::input;
-use crate::screen;
+use crate::GLOBAL_STATE;
+use crate::init;
+use boot::timer;
+use network::poll_network_stack;
 
 /// Main event loop
 ///
@@ -18,16 +20,15 @@ use crate::screen;
 pub fn main_loop() -> ! {
     loop {
         // Handle keyboard input
-        input::handle_input();
+        crate::input::handle_input();
 
         // Poll network stack
         poll_network();
 
         // Update screen
-        screen::update_screen();
+        crate::screen::update_screen();
 
         // Sleep for ~16ms to maintain ~60 FPS
-        // TODO: Use timer interrupt instead of busy sleep
         sleep_ms(16);
     }
 }
@@ -37,8 +38,8 @@ pub fn main_loop() -> ! {
 /// Calls the network stack's poll function to process incoming/outgoing packets,
 /// handle timeouts, and update TCP state machines.
 fn poll_network() {
-    // TODO: Implement once network stack is complete
-    // This will call network::poll_network_stack() or similar
+    let timestamp_ms = init::get_time_ms();
+    let _ = poll_network_stack(timestamp_ms);
 }
 
 /// Sleep for the specified number of milliseconds
@@ -46,33 +47,6 @@ fn poll_network() {
 /// # Arguments
 ///
 /// * `ms` - Number of milliseconds to sleep
-///
-/// # Note
-///
-/// This is a busy-wait implementation. A proper implementation would use
-/// timer interrupts to avoid wasting CPU cycles.
 fn sleep_ms(ms: u64) {
-    // TODO: Implement proper sleep using timer
-    // For now, just a busy loop
-    #[cfg(target_arch = "x86_64")]
-    {
-        // Rough approximation - this will vary by CPU speed
-        // Should be replaced with HPET/APIC timer
-        for _ in 0..(ms * 1000000) {
-            unsafe {
-                core::arch::asm!("pause");
-            }
-        }
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    {
-        // ARM64 busy wait
-        // Should be replaced with ARM Generic Timer
-        for _ in 0..(ms * 1000000) {
-            unsafe {
-                core::arch::asm!("yield");
-            }
-        }
-    }
+    timer::sleep_ms(ms);
 }
