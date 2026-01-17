@@ -1,12 +1,12 @@
 extern crate alloc;
 
+use crate::error::ConfigError;
 use alloc::{
     collections::BTreeMap,
     fmt,
     string::{String, ToString},
     vec::Vec,
 };
-use crate::error::ConfigError;
 
 /// TOML value representation
 #[derive(Debug, Clone, PartialEq)]
@@ -49,25 +49,25 @@ impl<'a> Parser<'a> {
 
     fn parse(&mut self) -> Result<Value, ConfigError> {
         let mut root = BTreeMap::new();
-        
+
         while !self.is_eof() {
             self.skip_whitespace();
             if self.is_eof() {
                 break;
             }
-            
+
             // Skip comments
             if self.peek() == Some('#') {
                 self.skip_line();
                 continue;
             }
-            
+
             // Parse table header or key-value pair
             if self.peek() == Some('[') {
                 // Table header - we'll handle nested tables by path
                 let path = self.parse_table_header()?;
                 self.skip_whitespace();
-                
+
                 // Parse key-value pairs until next table or EOF
                 let mut table = BTreeMap::new();
                 while !self.is_eof() && self.peek() != Some('[') {
@@ -79,12 +79,12 @@ impl<'a> Parser<'a> {
                         self.skip_line();
                         continue;
                     }
-                    
+
                     let (key, value) = self.parse_key_value()?;
                     table.insert(key, value);
                     self.skip_whitespace();
                 }
-                
+
                 // Insert nested table
                 self.insert_nested(&mut root, &path, Value::Table(table))?;
             } else {
@@ -93,16 +93,16 @@ impl<'a> Parser<'a> {
                 root.insert(key, value);
             }
         }
-        
+
         Ok(Value::Table(root))
     }
 
     fn parse_table_header(&mut self) -> Result<Vec<String>, ConfigError> {
         self.expect_char('[')?;
-        
+
         let mut path = Vec::new();
         let mut current_key = String::new();
-        
+
         loop {
             match self.peek() {
                 Some(']') => {
@@ -129,11 +129,11 @@ impl<'a> Parser<'a> {
                 None => return Err(ConfigError::parse_error("Unexpected EOF in table header")),
             }
         }
-        
+
         if path.is_empty() {
             return Err(ConfigError::parse_error("Empty table header"));
         }
-        
+
         Ok(path)
     }
 
@@ -148,12 +148,12 @@ impl<'a> Parser<'a> {
 
     fn parse_key(&mut self) -> Result<String, ConfigError> {
         let mut key = String::new();
-        
+
         // Keys can be bare (alphanumeric, underscore, dash) or quoted
         if self.peek() == Some('"') || self.peek() == Some('\'') {
             return self.parse_string();
         }
-        
+
         while let Some(ch) = self.peek() {
             if ch.is_alphanumeric() || ch == '_' || ch == '-' {
                 key.push(ch);
@@ -165,35 +165,29 @@ impl<'a> Parser<'a> {
                 return Err(ConfigError::parse_error(&msg));
             }
         }
-        
+
         if key.is_empty() {
             return Err(ConfigError::parse_error("Empty key"));
         }
-        
+
         Ok(key)
     }
 
     fn parse_value(&mut self) -> Result<Value, ConfigError> {
         self.skip_whitespace();
-        
+
         match self.peek() {
             Some('"') | Some('\'') => {
                 let s = self.parse_string()?;
                 Ok(Value::String(s))
             }
-            Some('[') => {
-                self.parse_array()
-            }
+            Some('[') => self.parse_array(),
             Some('{') => {
                 // Inline table - not required for minimal parser, but we can support it
                 self.parse_inline_table()
             }
-            Some(ch) if ch.is_ascii_digit() || ch == '-' || ch == '+' => {
-                self.parse_number()
-            }
-            Some('t') | Some('f') => {
-                self.parse_boolean()
-            }
+            Some(ch) if ch.is_ascii_digit() || ch == '-' || ch == '+' => self.parse_number(),
+            Some('t') | Some('f') => self.parse_boolean(),
             _ => {
                 let msg = fmt::format(format_args!("Unexpected character: {:?}", self.peek()));
                 Err(ConfigError::parse_error(&msg))
@@ -207,10 +201,10 @@ impl<'a> Parser<'a> {
             return Err(ConfigError::parse_error("Expected string quote"));
         }
         self.advance();
-        
+
         let mut result = String::new();
         let mut escaped = false;
-        
+
         loop {
             match self.peek() {
                 Some(ch) if escaped => {
@@ -241,28 +235,28 @@ impl<'a> Parser<'a> {
                 None => return Err(ConfigError::parse_error("Unterminated string")),
             }
         }
-        
+
         Ok(result)
     }
 
     fn parse_number(&mut self) -> Result<Value, ConfigError> {
         let start = self.pos;
         let mut is_float = false;
-        
+
         // Optional sign
         if self.peek() == Some('-') || self.peek() == Some('+') {
             self.advance();
         }
-        
+
         // Integer part
         if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
             return Err(ConfigError::parse_error("Invalid number"));
         }
-        
+
         while self.peek().map_or(false, |c| c.is_ascii_digit()) {
             self.advance();
         }
-        
+
         // Optional fractional part
         if self.peek() == Some('.') {
             is_float = true;
@@ -274,7 +268,7 @@ impl<'a> Parser<'a> {
                 self.advance();
             }
         }
-        
+
         // Optional exponent
         if self.peek() == Some('e') || self.peek() == Some('E') {
             is_float = true;
@@ -289,15 +283,17 @@ impl<'a> Parser<'a> {
                 self.advance();
             }
         }
-        
+
         let num_str = &self.input[start..self.pos];
-        
+
         if is_float {
-            num_str.parse::<f64>()
+            num_str
+                .parse::<f64>()
                 .map(Value::Float)
                 .map_err(|_| ConfigError::InvalidNumber(num_str.to_string()))
         } else {
-            num_str.parse::<i64>()
+            num_str
+                .parse::<i64>()
                 .map(Value::Integer)
                 .map_err(|_| ConfigError::InvalidNumber(num_str.to_string()))
         }
@@ -316,18 +312,18 @@ impl<'a> Parser<'a> {
     fn parse_array(&mut self) -> Result<Value, ConfigError> {
         self.expect_char('[')?;
         self.skip_whitespace();
-        
+
         let mut array = Vec::new();
-        
+
         // Empty array
         if self.peek() == Some(']') {
             self.advance();
             return Ok(Value::Array(array));
         }
-        
+
         loop {
             self.skip_whitespace();
-            
+
             // Skip comments in array
             if self.peek() == Some('#') {
                 self.skip_line();
@@ -337,18 +333,18 @@ impl<'a> Parser<'a> {
                 }
                 continue;
             }
-            
+
             let value = self.parse_value()?;
             array.push(value);
-            
+
             self.skip_whitespace();
-            
+
             // Skip comments after value
             if self.peek() == Some('#') {
                 self.skip_line();
                 self.skip_whitespace();
             }
-            
+
             match self.peek() {
                 Some(',') => {
                     self.advance();
@@ -361,29 +357,29 @@ impl<'a> Parser<'a> {
                 _ => return Err(ConfigError::parse_error("Expected ',' or ']' in array")),
             }
         }
-        
+
         Ok(Value::Array(array))
     }
 
     fn parse_inline_table(&mut self) -> Result<Value, ConfigError> {
         self.expect_char('{')?;
         self.skip_whitespace();
-        
+
         let mut table = BTreeMap::new();
-        
+
         // Empty table
         if self.peek() == Some('}') {
             self.advance();
             return Ok(Value::Table(table));
         }
-        
+
         loop {
             self.skip_whitespace();
             let (key, value) = self.parse_key_value()?;
             table.insert(key, value);
-            
+
             self.skip_whitespace();
-            
+
             match self.peek() {
                 Some(',') => {
                     self.advance();
@@ -393,10 +389,14 @@ impl<'a> Parser<'a> {
                     self.advance();
                     break;
                 }
-                _ => return Err(ConfigError::parse_error("Expected ',' or '}' in inline table")),
+                _ => {
+                    return Err(ConfigError::parse_error(
+                        "Expected ',' or '}' in inline table",
+                    ))
+                }
             }
         }
-        
+
         Ok(Value::Table(table))
     }
 
@@ -409,12 +409,12 @@ impl<'a> Parser<'a> {
         if path.is_empty() {
             return Err(ConfigError::parse_error("Empty table path"));
         }
-        
+
         if path.len() == 1 {
             root.insert(path[0].clone(), value);
             return Ok(());
         }
-        
+
         // Navigate/create nested structure
         let mut current = root;
         for key in path.iter().take(path.len() - 1) {
@@ -423,16 +423,14 @@ impl<'a> Parser<'a> {
                 let new_table = BTreeMap::new();
                 current.insert(key.clone(), Value::Table(new_table));
             }
-            
+
             match current.get_mut(key) {
                 Some(Value::Table(ref mut table)) => {
                     current = table;
                 }
                 Some(_) => {
-                    let msg = fmt::format(format_args!(
-                        "Key '{}' already exists as non-table",
-                        key
-                    ));
+                    let msg =
+                        fmt::format(format_args!("Key '{}' already exists as non-table", key));
                     return Err(ConfigError::parse_error(&msg));
                 }
                 None => {
@@ -441,11 +439,11 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        
+
         // Insert at final level
         let final_key = &path[path.len() - 1];
         current.insert(final_key.clone(), value);
-        
+
         Ok(())
     }
 
@@ -471,10 +469,7 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             Some(ch) => {
-                let msg = fmt::format(format_args!(
-                    "Expected '{}', found '{}'",
-                    expected, ch
-                ));
+                let msg = fmt::format(format_args!("Expected '{}', found '{}'", expected, ch));
                 Err(ConfigError::parse_error(&msg))
             }
             None => Err(ConfigError::UnexpectedEof),
@@ -736,7 +731,10 @@ key = "value"
         let result = TomlParser::parse(toml).unwrap();
         if let Value::Table(root) = result {
             if let Some(Value::Table(table)) = root.get("table") {
-                assert_eq!(table.get("key"), Some(&Value::String(String::from("value"))));
+                assert_eq!(
+                    table.get("key"),
+                    Some(&Value::String(String::from("value")))
+                );
             } else {
                 panic!("Expected nested table");
             }
@@ -755,7 +753,10 @@ key = "value"
         if let Value::Table(root) = result {
             if let Some(Value::Table(table)) = root.get("table") {
                 if let Some(Value::Table(subtable)) = table.get("subtable") {
-                    assert_eq!(subtable.get("key"), Some(&Value::String(String::from("value"))));
+                    assert_eq!(
+                        subtable.get("key"),
+                        Some(&Value::String(String::from("value")))
+                    );
                 } else {
                     panic!("Expected subtable");
                 }

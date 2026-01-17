@@ -121,10 +121,10 @@ pub enum ThemeChoice {
 pub struct WifiNetwork {
     pub ssid: String,
     pub bssid: [u8; 6],
-    pub signal_strength: i8,  // dBm
+    pub signal_strength: i8, // dBm
     pub security: SecurityType,
     pub channel: u8,
-    pub frequency: u16,  // MHz
+    pub frequency: u16, // MHz
 }
 
 /// WiFi security type

@@ -1,94 +1,105 @@
 // Error types for network operations
 
-use thiserror::Error;
+extern crate alloc;
+
+use alloc::string::String;
 
 /// Network-related errors
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum NetError {
-    #[error("Driver error: {0}")]
     DriverError(String),
-    
-    #[error("PCI error: {0}")]
+
     PciError(String),
-    
-    #[error("Virtio error: {0}")]
+
     VirtioError(String),
-    
-    #[error("Queue error: {0}")]
+
     QueueError(String),
-    
-    #[error("Invalid packet: {0}")]
+
     InvalidPacket(String),
-    
-    #[error("Device not found")]
+
     DeviceNotFound,
-    
-    #[error("Device not initialized")]
+
     DeviceNotInitialized,
-    
-    #[error("Buffer too small")]
+
     BufferTooSmall,
-    
-    #[error("Operation not supported")]
+
     NotSupported,
 
-    #[error("smoltcp error: {0}")]
     SmoltcpError(String),
 
-    #[error("DHCP timeout: {0}")]
     DhcpTimeout(String),
 
-    #[error("DHCP configuration failed: {0}")]
     DhcpConfigFailed(String),
 
-    #[error("DHCP not configured")]
     DhcpNotConfigured,
 
-    #[error("DNS error: {0}")]
     DnsError(String),
 
-    #[error("DNS timeout")]
     DnsTimeout,
 
-    #[error("DNS malformed response: {0}")]
     DnsMalformedResponse(String),
 
-    #[error("DNS name not found")]
     DnsNameNotFound,
 
-    #[error("DNS server failure")]
     DnsServerFailure,
 
-    #[error("TLS error: {0}")]
     TlsError(String),
 
-    #[error("TLS handshake failed: {0}")]
     TlsHandshakeFailed(String),
 
-    #[error("TLS certificate verification failed: {0}")]
     TlsCertificateError(String),
 
-    #[error("TLS invalid server name: {0}")]
     TlsInvalidServerName(String),
 
-    #[error("TLS unsupported cipher suite")]
     TlsUnsupportedCipherSuite,
 
-    #[error("TLS connection closed")]
     TlsConnectionClosed,
 
-    #[error("TLS protocol error: {0}")]
     TlsProtocolError(String),
 
-    #[error("TCP connection failed: {0}")]
     TcpConnectionFailed(String),
 
-    #[error("TCP socket not found")]
     TcpSocketNotFound,
 
-    #[error("TCP send buffer full")]
     TcpSendBufferFull,
 
-    #[error("TCP receive error")]
     TcpReceiveError,
+}
+
+impl core::fmt::Display for NetError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            NetError::DriverError(s) => write!(f, "Driver error: {s}"),
+            NetError::PciError(s) => write!(f, "PCI error: {s}"),
+            NetError::VirtioError(s) => write!(f, "Virtio error: {s}"),
+            NetError::QueueError(s) => write!(f, "Queue error: {s}"),
+            NetError::InvalidPacket(s) => write!(f, "Invalid packet: {s}"),
+            NetError::DeviceNotFound => write!(f, "Device not found"),
+            NetError::DeviceNotInitialized => write!(f, "Device not initialized"),
+            NetError::BufferTooSmall => write!(f, "Buffer too small"),
+            NetError::NotSupported => write!(f, "Operation not supported"),
+            NetError::SmoltcpError(s) => write!(f, "smoltcp error: {s}"),
+            NetError::DhcpTimeout(s) => write!(f, "DHCP timeout: {s}"),
+            NetError::DhcpConfigFailed(s) => write!(f, "DHCP configuration failed: {s}"),
+            NetError::DhcpNotConfigured => write!(f, "DHCP not configured"),
+            NetError::DnsError(s) => write!(f, "DNS error: {s}"),
+            NetError::DnsTimeout => write!(f, "DNS timeout"),
+            NetError::DnsMalformedResponse(s) => write!(f, "DNS malformed response: {s}"),
+            NetError::DnsNameNotFound => write!(f, "DNS name not found"),
+            NetError::DnsServerFailure => write!(f, "DNS server failure"),
+            NetError::TlsError(s) => write!(f, "TLS error: {s}"),
+            NetError::TlsHandshakeFailed(s) => write!(f, "TLS handshake failed: {s}"),
+            NetError::TlsCertificateError(s) => {
+                write!(f, "TLS certificate verification failed: {s}")
+            }
+            NetError::TlsInvalidServerName(s) => write!(f, "TLS invalid server name: {s}"),
+            NetError::TlsUnsupportedCipherSuite => write!(f, "TLS unsupported cipher suite"),
+            NetError::TlsConnectionClosed => write!(f, "TLS connection closed"),
+            NetError::TlsProtocolError(s) => write!(f, "TLS protocol error: {s}"),
+            NetError::TcpConnectionFailed(s) => write!(f, "TCP connection failed: {s}"),
+            NetError::TcpSocketNotFound => write!(f, "TCP socket not found"),
+            NetError::TcpSendBufferFull => write!(f, "TCP send buffer full"),
+            NetError::TcpReceiveError => write!(f, "TCP receive error"),
+        }
+    }
 }

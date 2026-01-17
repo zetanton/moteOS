@@ -9,7 +9,7 @@ pub const VIRTIO_VENDOR_ID: u16 = 0x1AF4;
 pub const VIRTIO_NET_DEVICE_ID: u16 = 0x1000;
 
 /// PCI configuration space address
-/// 
+///
 /// On x86_64, PCI configuration space is accessed via I/O ports 0xCF8 (address) and 0xCFC (data)
 #[cfg(target_arch = "x86_64")]
 pub struct PciConfig {
@@ -50,7 +50,7 @@ impl PciDevice {
             | ((self.device as u32) << 11)
             | ((self.function as u32) << 8)
             | (offset as u32 & 0xFC);
-        
+
         unsafe {
             // Write address to 0xCF8
             x86_64::instructions::port::Port::new(0xCF8).write(address);
@@ -58,7 +58,7 @@ impl PciDevice {
             x86_64::instructions::port::Port::new(0xCFC).read()
         }
     }
-    
+
     /// Write a 32-bit value to PCI configuration space
     #[cfg(target_arch = "x86_64")]
     pub fn write_config_dword(&self, offset: u8, value: u32) {
@@ -67,7 +67,7 @@ impl PciDevice {
             | ((self.device as u32) << 11)
             | ((self.function as u32) << 8)
             | (offset as u32 & 0xFC);
-        
+
         unsafe {
             // Write address to 0xCF8
             x86_64::instructions::port::Port::new(0xCF8).write(address);
@@ -75,7 +75,7 @@ impl PciDevice {
             x86_64::instructions::port::Port::new(0xCFC).write(value);
         }
     }
-    
+
     /// Read a 16-bit value from PCI configuration space
     #[cfg(target_arch = "x86_64")]
     pub fn read_config_word(&self, offset: u8) -> u16 {
@@ -86,7 +86,7 @@ impl PciDevice {
             ((dword >> 16) & 0xFFFF) as u16
         }
     }
-    
+
     /// Read a 8-bit value from PCI configuration space
     #[cfg(target_arch = "x86_64")]
     pub fn read_config_byte(&self, offset: u8) -> u8 {
@@ -94,15 +94,15 @@ impl PciDevice {
         let shift = (offset & 3) * 8;
         ((dword >> shift) & 0xFF) as u8
     }
-    
+
     /// Get the base address register at index `index`
     pub fn get_bar(&self, index: usize) -> u64 {
         if index >= 6 {
             return 0;
         }
-        
+
         let bar_low = self.bars[index];
-        
+
         // Check if it's a 64-bit BAR
         if (bar_low & 0x6) == 0x4 {
             // 64-bit BAR - read next BAR for high bits
@@ -120,13 +120,13 @@ impl PciDevice {
 }
 
 /// Scan PCI bus for devices
-/// 
+///
 /// # Returns
 /// A vector of all discovered PCI devices
 #[cfg(target_arch = "x86_64")]
 pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
     let mut devices = alloc::vec::Vec::new();
-    
+
     // Scan all buses (0-255)
     for bus in 0..=255 {
         // Scan all devices (0-31)
@@ -142,12 +142,12 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                     x86_64::instructions::port::Port::new(0xCF8).write(address);
                     x86_64::instructions::port::Port::new(0xCFC).read() as u16
                 };
-                
+
                 // If vendor ID is 0xFFFF, device doesn't exist
                 if vendor_id == 0xFFFF {
                     continue;
                 }
-                
+
                 // Read device ID (offset 0x02)
                 let device_id = unsafe {
                     let address = (1u32 << 31)
@@ -159,7 +159,7 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                     let dword = x86_64::instructions::port::Port::new(0xCFC).read();
                     ((dword >> 16) & 0xFFFF) as u16
                 };
-                
+
                 // Read class code (offset 0x08-0x0B)
                 let class_reg = unsafe {
                     let address = (1u32 << 31)
@@ -170,11 +170,11 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                     x86_64::instructions::port::Port::new(0xCF8).write(address);
                     x86_64::instructions::port::Port::new(0xCFC).read()
                 };
-                
+
                 let class_code = ((class_reg >> 24) & 0xFF) as u8;
                 let subclass = ((class_reg >> 16) & 0xFF) as u8;
                 let prog_if = ((class_reg >> 8) & 0xFF) as u8;
-                
+
                 // Read BARs (offset 0x10-0x27)
                 let mut bars = [0u32; 6];
                 for i in 0..6 {
@@ -188,7 +188,7 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                         x86_64::instructions::port::Port::new(0xCFC).read()
                     };
                 }
-                
+
                 // Read interrupt line (offset 0x3C)
                 let interrupt_reg = unsafe {
                     let address = (1u32 << 31)
@@ -200,7 +200,7 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                     x86_64::instructions::port::Port::new(0xCFC).read()
                 };
                 let interrupt_line = (interrupt_reg & 0xFF) as u8;
-                
+
                 let pci_device = PciDevice {
                     bus,
                     device,
@@ -213,21 +213,21 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                     bars,
                     interrupt_line,
                 };
-                
+
                 devices.push(pci_device);
             }
         }
     }
-    
+
     devices
 }
 
 /// Find a PCI device by vendor and device ID
-/// 
+///
 /// # Arguments
 /// * `vendor_id` - The vendor ID to search for
 /// * `device_id` - The device ID to search for
-/// 
+///
 /// # Returns
 /// * `Some(PciDevice)` if found
 /// * `None` if not found
@@ -235,10 +235,11 @@ pub fn find_pci_device(vendor_id: u16, device_id: u16) -> Option<PciDevice> {
     #[cfg(target_arch = "x86_64")]
     {
         let devices = scan_pci_bus();
-        devices.into_iter()
+        devices
+            .into_iter()
             .find(|d| d.vendor_id == vendor_id && d.device_id == device_id)
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         // ARM64 and other architectures would use different PCI access methods

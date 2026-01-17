@@ -160,14 +160,29 @@ mod tests {
 
         // Test text colors
         assert_eq!(DARK_THEME.text_primary, Color::from_hex("#F0F6FC").unwrap());
-        assert_eq!(DARK_THEME.text_secondary, Color::from_hex("#C9D1D9").unwrap());
+        assert_eq!(
+            DARK_THEME.text_secondary,
+            Color::from_hex("#C9D1D9").unwrap()
+        );
 
         // Test accent colors
-        assert_eq!(DARK_THEME.accent_primary, Color::from_hex("#58A6FF").unwrap());
-        assert_eq!(DARK_THEME.accent_success, Color::from_hex("#7EE787").unwrap());
-        assert_eq!(DARK_THEME.accent_warning, Color::from_hex("#FFA657").unwrap());
+        assert_eq!(
+            DARK_THEME.accent_primary,
+            Color::from_hex("#58A6FF").unwrap()
+        );
+        assert_eq!(
+            DARK_THEME.accent_success,
+            Color::from_hex("#7EE787").unwrap()
+        );
+        assert_eq!(
+            DARK_THEME.accent_warning,
+            Color::from_hex("#FFA657").unwrap()
+        );
         assert_eq!(DARK_THEME.accent_error, Color::from_hex("#FF7B72").unwrap());
-        assert_eq!(DARK_THEME.accent_assistant, Color::from_hex("#A371F7").unwrap());
+        assert_eq!(
+            DARK_THEME.accent_assistant,
+            Color::from_hex("#A371F7").unwrap()
+        );
     }
 
     #[test]
@@ -178,28 +193,64 @@ mod tests {
         assert_eq!(LIGHT_THEME.border, Color::from_hex("#D0D7DE").unwrap());
 
         // Test text colors
-        assert_eq!(LIGHT_THEME.text_primary, Color::from_hex("#1F2328").unwrap());
-        assert_eq!(LIGHT_THEME.text_secondary, Color::from_hex("#424A53").unwrap());
+        assert_eq!(
+            LIGHT_THEME.text_primary,
+            Color::from_hex("#1F2328").unwrap()
+        );
+        assert_eq!(
+            LIGHT_THEME.text_secondary,
+            Color::from_hex("#424A53").unwrap()
+        );
 
         // Test accent colors
-        assert_eq!(LIGHT_THEME.accent_primary, Color::from_hex("#0969DA").unwrap());
-        assert_eq!(LIGHT_THEME.accent_success, Color::from_hex("#1A7F37").unwrap());
-        assert_eq!(LIGHT_THEME.accent_warning, Color::from_hex("#9A6700").unwrap());
-        assert_eq!(LIGHT_THEME.accent_error, Color::from_hex("#CF222E").unwrap());
-        assert_eq!(LIGHT_THEME.accent_assistant, Color::from_hex("#8250DF").unwrap());
+        assert_eq!(
+            LIGHT_THEME.accent_primary,
+            Color::from_hex("#0969DA").unwrap()
+        );
+        assert_eq!(
+            LIGHT_THEME.accent_success,
+            Color::from_hex("#1A7F37").unwrap()
+        );
+        assert_eq!(
+            LIGHT_THEME.accent_warning,
+            Color::from_hex("#9A6700").unwrap()
+        );
+        assert_eq!(
+            LIGHT_THEME.accent_error,
+            Color::from_hex("#CF222E").unwrap()
+        );
+        assert_eq!(
+            LIGHT_THEME.accent_assistant,
+            Color::from_hex("#8250DF").unwrap()
+        );
     }
 
     #[test]
     fn test_provider_colors() {
         // Test dark theme provider colors
-        assert_eq!(DARK_THEME.provider_openai, Color::from_hex("#10A37F").unwrap());
-        assert_eq!(DARK_THEME.provider_anthropic, Color::from_hex("#D4A574").unwrap());
-        assert_eq!(DARK_THEME.provider_groq, Color::from_hex("#F55036").unwrap());
+        assert_eq!(
+            DARK_THEME.provider_openai,
+            Color::from_hex("#10A37F").unwrap()
+        );
+        assert_eq!(
+            DARK_THEME.provider_anthropic,
+            Color::from_hex("#D4A574").unwrap()
+        );
+        assert_eq!(
+            DARK_THEME.provider_groq,
+            Color::from_hex("#F55036").unwrap()
+        );
         assert_eq!(DARK_THEME.provider_xai, Color::from_hex("#FFFFFF").unwrap());
-        assert_eq!(DARK_THEME.provider_local, Color::from_hex("#7C3AED").unwrap());
+        assert_eq!(
+            DARK_THEME.provider_local,
+            Color::from_hex("#7C3AED").unwrap()
+        );
 
         // Test light theme provider colors (same as dark except xAI)
-        assert_eq!(LIGHT_THEME.provider_xai, Color::from_hex("#000000").unwrap());
+        assert_eq!(
+            LIGHT_THEME.provider_xai,
+            Color::from_hex("#000000").unwrap()
+        );
     }
 
     #[test]

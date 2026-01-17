@@ -135,9 +135,18 @@ fn dns_with_dhcp_example(stack: &mut NetworkStack) -> Result<(), NetError> {
 
     // Use the first DNS server from DHCP
     if let Some(dns_server) = config.dns.first() {
-        println!("\nResolving hostname using DHCP-provided DNS ({})...", dns_server);
+        println!(
+            "\nResolving hostname using DHCP-provided DNS ({})...",
+            dns_server
+        );
 
-        match stack.dns_resolve("example.com", *dns_server, 5000, get_time_ms, Some(sleep_ms)) {
+        match stack.dns_resolve(
+            "example.com",
+            *dns_server,
+            5000,
+            get_time_ms,
+            Some(sleep_ms),
+        ) {
             Ok(ip) => {
                 println!("  ✓ Resolved example.com to: {}", ip);
             }

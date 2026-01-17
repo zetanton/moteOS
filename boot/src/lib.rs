@@ -3,19 +3,19 @@
 // Boot crate for moteOS
 // Handles UEFI/BIOS boot, memory management, interrupts, framebuffer, and timer setup
 
-pub mod uefi;
 pub mod bios;
-pub mod memory;
-pub mod interrupts;
 pub mod framebuffer;
+pub mod interrupts;
+pub mod memory;
 pub mod timer;
+pub mod uefi;
 
 // Re-export commonly used types
 pub use framebuffer::{Color, FramebufferInfo, PixelFormat, Point, Rect};
 pub use memory::{MemoryKind, MemoryMap, MemoryRegion};
 
 /// Boot information passed to kernel_main
-/// 
+///
 /// This structure contains all information needed by the kernel to initialize
 /// and run the operating system.
 #[derive(Debug)]

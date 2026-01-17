@@ -6,12 +6,14 @@ edition.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[features]
+default = []
+tls = []
+
 [dependencies]
 # Workspace dependencies
 spin = { workspace = true }
-thiserror = { workspace = true }
 smoltcp = { workspace = true }
-x86_64 = { workspace = true }
 
 # For virtio
 volatile = "0.5"
@@ -29,6 +31,9 @@ rand_core = { version = "0.6", default-features = false }
 heapless = "0.8"
 
 # For certificate verification
-webpki = { version = "0.102", default-features = false, features = ["alloc"] }
+webpki = { version = "0.22", default-features = false, features = ["alloc"] }
 webpki-roots = { version = "0.26", default-features = false }
 x509-parser = { version = "0.16", default-features = false, features = ["verify"] }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_64 = { workspace = true }

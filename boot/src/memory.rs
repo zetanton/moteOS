@@ -4,7 +4,7 @@
 use linked_list_allocator::LockedHeap;
 
 /// Global heap allocator
-/// 
+///
 /// This allocator must be initialized with `init_heap()` before use.
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -65,9 +65,9 @@ impl MemoryMap {
 }
 
 /// Initialize the heap allocator
-/// 
+///
 /// # Safety
-/// 
+///
 /// - `heap_start` must be a valid, aligned memory address
 /// - `heap_size` must be the size of a contiguous, usable memory region
 /// - This function must only be called once

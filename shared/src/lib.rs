@@ -4,7 +4,7 @@
 // Common types, utilities, and data structures shared across crates
 
 /// Color structure for pixel rendering
-/// 
+///
 /// Per Section 3.4 of technical specifications
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -27,12 +27,22 @@ impl Color {
 
     /// Create a black color
     pub const fn black() -> Self {
-        Self { r: 0, g: 0, b: 0, a: 255 }
+        Self {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 255,
+        }
     }
 
     /// Create a white color
     pub const fn white() -> Self {
-        Self { r: 255, g: 255, b: 255, a: 255 }
+        Self {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: 255,
+        }
     }
 
     pub fn to_rgb(&self) -> (u8, u8, u8) {
@@ -66,7 +76,12 @@ pub struct Rect {
 impl Rect {
     /// Create a new Rectangle
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Get the right edge (x + width)
@@ -81,10 +96,7 @@ impl Rect {
 
     /// Check if a point is inside this rectangle
     pub fn contains(&self, point: Point) -> bool {
-        point.x >= self.x
-            && point.x < self.right()
-            && point.y >= self.y
-            && point.y < self.bottom()
+        point.x >= self.x && point.x < self.right() && point.y >= self.y && point.y < self.bottom()
     }
 
     /// Clip this rectangle to fit within the given bounds

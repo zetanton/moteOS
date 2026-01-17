@@ -6,7 +6,7 @@
 #![no_std]
 #![no_main]
 
-use tui::{Color, DARK_THEME, LIGHT_THEME, Theme};
+use tui::{Color, Theme, DARK_THEME, LIGHT_THEME};
 
 /// Example function showing how to render text with theme colors
 fn render_chat_message(theme: &Theme, is_assistant: bool) {
@@ -31,11 +31,11 @@ fn render_chat_message(theme: &Theme, is_assistant: bool) {
 /// Example function showing provider color usage
 fn render_provider_badge(theme: &Theme, provider: &str) {
     let badge_color = match provider {
-        "openai" => theme.provider_openai,     // #10A37F
+        "openai" => theme.provider_openai,       // #10A37F
         "anthropic" => theme.provider_anthropic, // #D4A574
-        "groq" => theme.provider_groq,         // #F55036
-        "xai" => theme.provider_xai,           // #FFFFFF (dark) / #000000 (light)
-        "local" => theme.provider_local,       // #7C3AED
+        "groq" => theme.provider_groq,           // #F55036
+        "xai" => theme.provider_xai,             // #FFFFFF (dark) / #000000 (light)
+        "local" => theme.provider_local,         // #7C3AED
         _ => theme.accent_primary,
     };
 
@@ -45,9 +45,9 @@ fn render_provider_badge(theme: &Theme, provider: &str) {
 /// Example function showing status colors
 fn render_status_indicator(theme: &Theme, status: &str) {
     let status_color = match status {
-        "success" | "connected" => theme.accent_success,  // #7EE787
+        "success" | "connected" => theme.accent_success, // #7EE787
         "warning" | "reconnecting" => theme.accent_warning, // #FFA657
-        "error" | "disconnected" => theme.accent_error,   // #FF7B72
+        "error" | "disconnected" => theme.accent_error,  // #FF7B72
         _ => theme.text_secondary,
     };
 
@@ -62,7 +62,7 @@ fn render_chat_interface() {
     let bg_color = theme.background; // #0D1117
 
     // Header bar
-    let header_bg = theme.surface;   // #161B22
+    let header_bg = theme.surface; // #161B22
     let header_text = theme.text_primary; // #F0F6FC
     let header_border = theme.border; // #21262D
 

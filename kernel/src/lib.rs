@@ -12,14 +12,14 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use boot::BootInfo;
-use config::{MoteConfig, ConfigStorage, EfiConfigStorage};
+use config::{ConfigStorage, EfiConfigStorage, MoteConfig};
 use core::panic::PanicInfo;
-use llm::{LlmProvider, Message, Role, GenerationConfig, CompletionResult};
+use llm::{CompletionResult, GenerationConfig, LlmProvider, Message, Role};
 use spin::Mutex;
 
+pub mod event_loop;
 pub mod init;
 pub mod input;
-pub mod event_loop;
 pub mod screen;
 
 // Global kernel state

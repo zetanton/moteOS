@@ -1,8 +1,8 @@
 #![no_std]
 
+use crate::tensor::{BlockQ4K, QK_K};
 use alloc::vec::Vec;
 use micromath::F32Ext;
-use crate::tensor::{BlockQ4K, QK_K};
 
 /// SiLU (Sigmoid Linear Unit) activation function: x * sigmoid(x)
 pub fn silu(x: &mut [f32]) {
@@ -119,23 +119,23 @@ pub fn matmul_q4k(a: &[u8], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32>
     let blocks_per_row = k / QK_K;
     let block_size = core::mem::size_of::<BlockQ4K>();
     let mut out = Vec::with_capacity(m * n);
-    
+
     for i in 0..m {
         for j in 0..n {
             let mut row_sum = 0.0;
             let row_start = i * blocks_per_row * block_size;
-            
+
             for l in 0..blocks_per_row {
                 let block_offset = row_start + l * block_size;
                 let block = unsafe { &*(a.as_ptr().add(block_offset) as *const BlockQ4K) };
-                
+
                 // Extract 32 elements at a time
                 for group in 0..8 {
                     let group_scale = get_scale(block, group);
                     let group_min = get_min(block, group);
                     let d = block.d * group_scale;
                     let m = block.dmin * group_min;
-                    
+
                     for r in 0..32 {
                         let idx = group * 32 + r;
                         let q = if idx % 2 == 0 {
@@ -143,7 +143,7 @@ pub fn matmul_q4k(a: &[u8], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32>
                         } else {
                             block.qs[idx / 2] >> 4
                         };
-                        
+
                         let val = (q as f32) * d - m;
                         row_sum += val * b[(l * QK_K + idx) * n + j];
                     }
@@ -158,14 +158,15 @@ pub fn matmul_q4k(a: &[u8], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32>
 /// Dot product of a Q4_K block and an F32 vector (for vector-matrix mult)
 fn dot_product_q4k_f32(block: &BlockQ4K, b: &[f32]) -> f32 {
     let mut sum = 0.0;
-    
-    for i in 0..8 { // 8 groups of 32 elements = 256
+
+    for i in 0..8 {
+        // 8 groups of 32 elements = 256
         let group_scale = get_scale(block, i);
         let group_min = get_min(block, i);
-        
+
         let d = block.d * group_scale;
         let m = block.dmin * group_min;
-        
+
         for j in 0..32 {
             let idx = i * 32 + j;
             let q = if idx % 2 == 0 {
@@ -173,12 +174,12 @@ fn dot_product_q4k_f32(block: &BlockQ4K, b: &[f32]) -> f32 {
             } else {
                 block.qs[idx / 2] >> 4
             };
-            
+
             let val = (q as f32) * d - m;
             sum += val * b[idx];
         }
     }
-    
+
     sum
 }
 
@@ -240,7 +241,7 @@ mod tests {
         let weight = [1.0, 1.0, 1.0];
         let mut out = [0.0; 3];
         rms_norm(&mut out, &x, &weight, 1e-6);
-        
+
         let mut sum_sq = 0.0;
         for &val in out.iter() {
             sum_sq += val * val;

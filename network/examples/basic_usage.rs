@@ -10,7 +10,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use network::{
-    drivers::virtio::{init_virtio_net, get_virtio_net},
+    drivers::virtio::{get_virtio_net, init_virtio_net},
     init_network_stack, poll_network_stack, NetworkStack,
 };
 use smoltcp::wire::Ipv4Address;
@@ -23,10 +23,10 @@ pub fn init_network() -> Result<(), network::NetError> {
     init_virtio_net()?;
 
     // Step 2: Get the driver instance
-    let mut virtio_guard = get_virtio_net()
-        .ok_or(network::NetError::DeviceNotFound)?;
+    let mut virtio_guard = get_virtio_net().ok_or(network::NetError::DeviceNotFound)?;
 
-    let virtio_driver = virtio_guard.take()
+    let virtio_driver = virtio_guard
+        .take()
         .ok_or(network::NetError::DeviceNotInitialized)?;
 
     // Step 3: Create a boxed driver for the network stack
@@ -35,8 +35,8 @@ pub fn init_network() -> Result<(), network::NetError> {
     // Step 4: Initialize the network stack
     // Option 1: With static IP configuration
     let ip_config = Some((
-        Ipv4Address::new(192, 168, 1, 100),  // IP address
-        24,                                    // Prefix length (netmask)
+        Ipv4Address::new(192, 168, 1, 100), // IP address
+        24,                                 // Prefix length (netmask)
     ));
 
     // Option 2: Without IP (for DHCP - to be implemented)

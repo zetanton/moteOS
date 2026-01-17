@@ -92,7 +92,8 @@ impl Tokenizer {
     /// - `tokenizer.ggml.padding_token_id`: Padding token ID (optional)
     pub fn from_gguf(gguf: &GgufFile) -> Result<Self, ModelError> {
         // Extract tokens array
-        let tokens = gguf.get_metadata("tokenizer.ggml.tokens")
+        let tokens = gguf
+            .get_metadata("tokenizer.ggml.tokens")
             .ok_or_else(|| ModelError::Tokenizer(TokenizerError::MissingVocab))?;
 
         let token_strings = match tokens {
@@ -126,10 +127,7 @@ impl Tokenizer {
                                 // Merge rules are typically in format "token1 token2"
                                 let parts: Vec<&str> = s.split_whitespace().collect();
                                 if parts.len() == 2 {
-                                    merge_rules.push((
-                                        parts[0].to_string(),
-                                        parts[1].to_string(),
-                                    ));
+                                    merge_rules.push((parts[0].to_string(), parts[1].to_string()));
                                 }
                             }
                             _ => {}

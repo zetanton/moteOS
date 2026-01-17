@@ -37,7 +37,7 @@ pub struct GenerationConfig {
     pub max_tokens: Option<usize>,
     /// Sequences that will stop generation when encountered.
     pub stop_sequences: Vec<String>,
-    /// Top-p (nucleus) sampling parameter (0.0-1.0). 
+    /// Top-p (nucleus) sampling parameter (0.0-1.0).
     /// Samples from tokens with cumulative probability up to this value.
     pub top_p: Option<f32>,
     /// Top-k sampling parameter. Only sample from the top K most likely tokens.

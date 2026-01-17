@@ -27,7 +27,7 @@ impl PixelFormat {
 }
 
 /// Framebuffer information structure
-/// 
+///
 /// This struct contains all information needed to access and write to the framebuffer.
 /// The `base` pointer is unsafe to dereference and must be used with caution.
 #[derive(Debug, Clone, Copy)]
@@ -73,9 +73,9 @@ impl FramebufferInfo {
     }
 
     /// Write a pixel at the given coordinates
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This function is unsafe because:
     /// - It dereferences a raw pointer
     /// - It does not check bounds (caller must ensure x < width, y < height)
@@ -115,9 +115,9 @@ impl FramebufferInfo {
     }
 
     /// Fill a rectangle with a solid color
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Same safety requirements as `write_pixel`
     pub unsafe fn fill_rectangle(&self, rect: Rect, color: Color) {
         // Clip rectangle to framebuffer bounds
@@ -132,9 +132,9 @@ impl FramebufferInfo {
     }
 
     /// Draw a line using Bresenham's algorithm
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Same safety requirements as `write_pixel`
     pub unsafe fn draw_line(&self, start: Point, end: Point, color: Color) {
         // Simple Bresenham's line algorithm without clipping
@@ -172,9 +172,9 @@ impl FramebufferInfo {
     }
 
     /// Clear the entire framebuffer (fill with black)
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Same safety requirements as `write_pixel`
     pub unsafe fn clear(&self) {
         let rect = Rect::new(0, 0, self.width, self.height);
@@ -184,7 +184,7 @@ impl FramebufferInfo {
     // ========== Safe wrapper functions ==========
 
     /// Safely set a pixel at the given coordinates
-    /// 
+    ///
     /// Returns `true` if the pixel was set, `false` if coordinates are out of bounds
     pub fn set_pixel(&self, x: usize, y: usize, color: Color) -> bool {
         if x >= self.width || y >= self.height {
@@ -197,7 +197,7 @@ impl FramebufferInfo {
     }
 
     /// Safely fill a rectangle with a solid color
-    /// 
+    ///
     /// The rectangle is automatically clipped to framebuffer bounds
     pub fn fill_rectangle_safe(&self, rect: Rect, color: Color) {
         unsafe {
@@ -206,14 +206,16 @@ impl FramebufferInfo {
     }
 
     /// Safely draw a line with proper clipping
-    /// 
+    ///
     /// Uses Cohen-Sutherland line clipping algorithm to clip the line
     /// to framebuffer bounds before drawing
     pub fn draw_line_safe(&self, start: Point, end: Point, color: Color) {
         let bounds = Rect::new(0, 0, self.width, self.height);
-        
+
         // Clip line to bounds using Cohen-Sutherland algorithm
-        if let Some((clipped_start, clipped_end)) = self.clip_line_cohen_sutherland(start, end, bounds) {
+        if let Some((clipped_start, clipped_end)) =
+            self.clip_line_cohen_sutherland(start, end, bounds)
+        {
             unsafe {
                 self.draw_line(clipped_start, clipped_end, color);
             }
@@ -221,7 +223,7 @@ impl FramebufferInfo {
     }
 
     /// Cohen-Sutherland line clipping algorithm
-    /// 
+    ///
     /// Returns `Some((start, end))` if the line (or part of it) is visible,
     /// `None` if the line is completely outside the bounds
     fn clip_line_cohen_sutherland(
@@ -319,7 +321,7 @@ impl FramebufferInfo {
 }
 
 /// Compute region code for Cohen-Sutherland clipping (signed version)
-/// 
+///
 /// Returns a 4-bit code:
 /// - Bit 0: left of bounds
 /// - Bit 1: right of bounds
@@ -327,7 +329,7 @@ impl FramebufferInfo {
 /// - Bit 3: below bounds (bottom)
 fn compute_region_code_signed(x: i32, y: i32, bounds: Rect) -> u8 {
     let mut code = 0u8;
-    
+
     if x < bounds.x as i32 {
         code |= 0x01; // Left
     }
@@ -340,7 +342,7 @@ fn compute_region_code_signed(x: i32, y: i32, bounds: Rect) -> u8 {
     if y >= bounds.bottom() as i32 {
         code |= 0x08; // Bottom
     }
-    
+
     code
 }
 
@@ -385,11 +387,11 @@ mod tests {
     #[test]
     fn test_rect_contains() {
         let rect = Rect::new(10, 20, 100, 200);
-        
+
         assert!(rect.contains(Point::new(50, 50)));
         assert!(rect.contains(Point::new(10, 20)));
         assert!(rect.contains(Point::new(109, 219)));
-        
+
         assert!(!rect.contains(Point::new(9, 50)));
         assert!(!rect.contains(Point::new(110, 50)));
         assert!(!rect.contains(Point::new(50, 19)));
@@ -399,22 +401,22 @@ mod tests {
     #[test]
     fn test_rect_clip_to() {
         let bounds = Rect::new(0, 0, 100, 100);
-        
+
         // Rectangle completely inside bounds
         let rect1 = Rect::new(10, 20, 30, 40);
         let clipped1 = rect1.clip_to(bounds);
         assert_eq!(clipped1, Some(rect1));
-        
+
         // Rectangle partially outside (right and bottom)
         let rect2 = Rect::new(80, 80, 30, 30);
         let clipped2 = rect2.clip_to(bounds);
         assert_eq!(clipped2, Some(Rect::new(80, 80, 20, 20)));
-        
+
         // Rectangle completely outside
         let rect3 = Rect::new(150, 150, 50, 50);
         let clipped3 = rect3.clip_to(bounds);
         assert_eq!(clipped3, None);
-        
+
         // Rectangle partially outside (left and top - use wrapping)
         // Since Rect uses usize, we'll test with a rectangle that starts at 0
         // but extends beyond bounds on the right
@@ -426,27 +428,27 @@ mod tests {
     #[test]
     fn test_region_code_computation() {
         let bounds = Rect::new(10, 20, 100, 200);
-        
+
         // Point inside bounds
         let code1 = compute_region_code_signed(50, 50, bounds);
         assert_eq!(code1, 0);
-        
+
         // Point to the left
         let code2 = compute_region_code_signed(5, 50, bounds);
         assert_eq!(code2 & 0x01, 0x01);
-        
+
         // Point to the right
         let code3 = compute_region_code_signed(150, 50, bounds);
         assert_eq!(code3 & 0x02, 0x02);
-        
+
         // Point above
         let code4 = compute_region_code_signed(50, 10, bounds);
         assert_eq!(code4 & 0x04, 0x04);
-        
+
         // Point below
         let code5 = compute_region_code_signed(50, 250, bounds);
         assert_eq!(code5 & 0x08, 0x08);
-        
+
         // Point in top-left corner (outside)
         let code6 = compute_region_code_signed(5, 10, bounds);
         assert_eq!(code6 & 0x01, 0x01);
@@ -456,18 +458,12 @@ mod tests {
     #[test]
     fn test_line_clipping_inside() {
         // Create a mock framebuffer info (we won't actually write to it)
-        let fb = FramebufferInfo::new(
-            core::ptr::null_mut(),
-            100,
-            100,
-            300,
-            PixelFormat::Rgba,
-        );
-        
+        let fb = FramebufferInfo::new(core::ptr::null_mut(), 100, 100, 300, PixelFormat::Rgba);
+
         let bounds = Rect::new(0, 0, 100, 100);
         let start = Point::new(10, 10);
         let end = Point::new(50, 50);
-        
+
         // Line completely inside should be accepted
         let result = fb.clip_line_cohen_sutherland(start, end, bounds);
         assert!(result.is_some());
@@ -480,23 +476,17 @@ mod tests {
 
     #[test]
     fn test_line_clipping_outside() {
-        let fb = FramebufferInfo::new(
-            core::ptr::null_mut(),
-            100,
-            100,
-            300,
-            PixelFormat::Rgba,
-        );
-        
+        let fb = FramebufferInfo::new(core::ptr::null_mut(), 100, 100, 300, PixelFormat::Rgba);
+
         let bounds = Rect::new(0, 0, 100, 100);
-        
+
         // Line completely outside (both points to the left - use large values that wrap)
         // Since Point uses usize, we'll use values that are clearly outside bounds
         let start = Point::new(200, 50);
         let end = Point::new(250, 60);
         let result = fb.clip_line_cohen_sutherland(start, end, bounds);
         assert!(result.is_none());
-        
+
         // Line completely outside (both points above - use large values)
         let start = Point::new(50, 200);
         let end = Point::new(60, 250);
@@ -506,16 +496,10 @@ mod tests {
 
     #[test]
     fn test_line_clipping_partial() {
-        let fb = FramebufferInfo::new(
-            core::ptr::null_mut(),
-            100,
-            100,
-            300,
-            PixelFormat::Rgba,
-        );
-        
+        let fb = FramebufferInfo::new(core::ptr::null_mut(), 100, 100, 300, PixelFormat::Rgba);
+
         let bounds = Rect::new(0, 0, 100, 100);
-        
+
         // Line partially inside (starts outside left, ends inside)
         // We can't use negative values with Point, so we'll test with a point
         // that's outside the right edge instead
@@ -542,20 +526,20 @@ mod tests {
             40, // stride = width * 4
             PixelFormat::Rgba,
         );
-        
+
         let color = Color::rgb(255, 0, 0);
-        
+
         // Valid coordinates
         assert!(fb.set_pixel(5, 5, color));
-        
+
         // Out of bounds X
         assert!(!fb.set_pixel(10, 5, color));
         assert!(!fb.set_pixel(100, 5, color));
-        
+
         // Out of bounds Y
         assert!(!fb.set_pixel(5, 10, color));
         assert!(!fb.set_pixel(5, 100, color));
-        
+
         // Both out of bounds
         assert!(!fb.set_pixel(100, 100, color));
     }

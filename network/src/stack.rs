@@ -16,7 +16,9 @@ use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::socket::dhcpv4::{self, Socket as DhcpSocket};
 use smoltcp::socket::udp::{self, PacketMetadata, Socket as UdpSocket, UdpMetadata};
 use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr};
+use smoltcp::wire::{
+    EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint, Ipv4Address, Ipv4Cidr,
+};
 use spin::Mutex;
 
 /// Device wrapper that adapts our NetworkDriver trait to smoltcp's Device trait
@@ -67,20 +69,24 @@ impl<'a> TxToken for TxTokenWrapper<'a> {
 }
 
 impl Device for DeviceWrapper {
-    type RxToken<'a> = RxTokenWrapper where Self: 'a;
-    type TxToken<'a> = TxTokenWrapper<'a> where Self: 'a;
+    type RxToken<'a>
+        = RxTokenWrapper
+    where
+        Self: 'a;
+    type TxToken<'a>
+        = TxTokenWrapper<'a>
+    where
+        Self: 'a;
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Try to receive a packet from the driver
         match self.driver.receive() {
-            Ok(Some(packet)) => {
-                Some((
-                    RxTokenWrapper { buffer: packet },
-                    TxTokenWrapper {
-                        driver: &mut self.driver,
-                    },
-                ))
-            }
+            Ok(Some(packet)) => Some((
+                RxTokenWrapper { buffer: packet },
+                TxTokenWrapper {
+                    driver: &mut self.driver,
+                },
+            )),
             Ok(None) => None,
             Err(_) => None,
         }
@@ -146,16 +152,26 @@ impl NetworkStack {
         // Configure IP address if provided
         if let Some((ip, prefix_len)) = ip_config {
             iface.update_ip_addrs(|ip_addrs| {
-                if ip_addrs.push(IpCidr::new(IpAddress::Ipv4(ip), prefix_len)).is_err() {
-                    return Err(NetError::DriverError("Failed to add IP address".to_string()));
+                if ip_addrs
+                    .push(IpCidr::new(IpAddress::Ipv4(ip), prefix_len))
+                    .is_err()
+                {
+                    return Err(NetError::DriverError(
+                        "Failed to add IP address".to_string(),
+                    ));
                 }
                 Ok(())
             })?;
         } else {
             // Use 0.0.0.0/0 as default (will need DHCP)
             iface.update_ip_addrs(|ip_addrs| {
-                if ip_addrs.push(IpCidr::new(IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), 0)).is_err() {
-                    return Err(NetError::DriverError("Failed to add default IP address".to_string()));
+                if ip_addrs
+                    .push(IpCidr::new(IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), 0))
+                    .is_err()
+                {
+                    return Err(NetError::DriverError(
+                        "Failed to add default IP address".to_string(),
+                    ));
                 }
                 Ok(())
             })?;
@@ -194,9 +210,15 @@ impl NetworkStack {
         self.device.driver.poll()?;
 
         // Poll the smoltcp interface
-        match self.iface.poll(timestamp, &mut self.device, &mut self.sockets) {
+        match self
+            .iface
+            .poll(timestamp, &mut self.device, &mut self.sockets)
+        {
             Ok(_) => Ok(()),
-            Err(e) => Err(NetError::DriverError(format!("smoltcp poll error: {:?}", e))),
+            Err(e) => Err(NetError::DriverError(format!(
+                "smoltcp poll error: {:?}",
+                e
+            ))),
         }
     }
 
@@ -393,10 +415,7 @@ impl NetworkStack {
 
             // Add new address from DHCP
             if ip_addrs
-                .push(IpCidr::new(
-                    IpAddress::Ipv4(config.ip),
-                    config.prefix_len,
-                ))
+                .push(IpCidr::new(IpAddress::Ipv4(config.ip), config.prefix_len))
                 .is_err()
             {
                 return Err(NetError::DhcpConfigFailed(
@@ -408,10 +427,12 @@ impl NetworkStack {
 
         // Update default gateway (route)
         if let Some(gateway) = config.gateway {
-            self.iface.routes_mut().add_default_ipv4_route(gateway)
-                .map_err(|_| NetError::DhcpConfigFailed(
-                    "Failed to set default gateway".to_string(),
-                ))?;
+            self.iface
+                .routes_mut()
+                .add_default_ipv4_route(gateway)
+                .map_err(|_| {
+                    NetError::DhcpConfigFailed("Failed to set default gateway".to_string())
+                })?;
         }
 
         // DNS servers are stored in the config but not directly applied to the interface
@@ -484,14 +505,10 @@ impl NetworkStack {
         let query = dns::build_query(hostname, transaction_id);
 
         // Create UDP socket with buffers
-        let rx_buffer = udp::PacketBuffer::new(
-            Vec::from([PacketMetadata::EMPTY; 4]),
-            vec![0u8; 1024],
-        );
-        let tx_buffer = udp::PacketBuffer::new(
-            Vec::from([PacketMetadata::EMPTY; 4]),
-            vec![0u8; 1024],
-        );
+        let rx_buffer =
+            udp::PacketBuffer::new(Vec::from([PacketMetadata::EMPTY; 4]), vec![0u8; 1024]);
+        let tx_buffer =
+            udp::PacketBuffer::new(Vec::from([PacketMetadata::EMPTY; 4]), vec![0u8; 1024]);
 
         let mut udp_socket = UdpSocket::new(rx_buffer, tx_buffer);
 

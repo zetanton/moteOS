@@ -53,8 +53,8 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::types::{MoteConfig, WifiNetwork, ConnectionType, ProviderConfig};
 use crate::crypto;
+use crate::types::{ConnectionType, MoteConfig, ProviderConfig, WifiNetwork};
 
 /// Setup wizard state machine
 #[derive(Debug)]
@@ -112,7 +112,7 @@ pub enum ApiKeyProvider {
     Anthropic,
     Groq,
     XAI,
-    Skip,  // Skip to use local model only
+    Skip, // Skip to use local model only
 }
 
 /// Events emitted by the wizard
@@ -246,7 +246,9 @@ impl SetupWizard {
             Key::Char('2') | Key::Char('w') => {
                 // WiFi selected - request scan
                 self.config.network.connection_type = ConnectionType::Wifi;
-                self.state = WizardState::NetworkScan { networks: Vec::new() };
+                self.state = WizardState::NetworkScan {
+                    networks: Vec::new(),
+                };
                 WizardEvent::RequestWifiScan
             }
             Key::Esc => {
@@ -333,7 +335,7 @@ impl SetupWizard {
             }
             Key::Esc => {
                 self.state = WizardState::NetworkSelect {
-                    selected_index: self.selected_network_index
+                    selected_index: self.selected_network_index,
                 };
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
@@ -350,34 +352,42 @@ impl SetupWizard {
                 self.current_provider = ApiKeyProvider::OpenAI;
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
-                self.state = WizardState::ApiKeyInput { provider: ApiKeyProvider::OpenAI };
+                self.state = WizardState::ApiKeyInput {
+                    provider: ApiKeyProvider::OpenAI,
+                };
                 WizardEvent::None
             }
             Key::Char('2') => {
                 self.current_provider = ApiKeyProvider::Anthropic;
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
-                self.state = WizardState::ApiKeyInput { provider: ApiKeyProvider::Anthropic };
+                self.state = WizardState::ApiKeyInput {
+                    provider: ApiKeyProvider::Anthropic,
+                };
                 WizardEvent::None
             }
             Key::Char('3') => {
                 self.current_provider = ApiKeyProvider::Groq;
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
-                self.state = WizardState::ApiKeyInput { provider: ApiKeyProvider::Groq };
+                self.state = WizardState::ApiKeyInput {
+                    provider: ApiKeyProvider::Groq,
+                };
                 WizardEvent::None
             }
             Key::Char('4') => {
                 self.current_provider = ApiKeyProvider::XAI;
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
-                self.state = WizardState::ApiKeyInput { provider: ApiKeyProvider::XAI };
+                self.state = WizardState::ApiKeyInput {
+                    provider: ApiKeyProvider::XAI,
+                };
                 WizardEvent::None
             }
             Key::Char('s') | Key::Enter => {
                 // Skip - use local model only
                 self.state = WizardState::Ready {
-                    config: self.config.clone()
+                    config: self.config.clone(),
                 };
                 WizardEvent::None
             }
@@ -385,7 +395,7 @@ impl SetupWizard {
                 // Go back to network selection
                 if self.config.network.connection_type == ConnectionType::Wifi {
                     self.state = WizardState::NetworkSelect {
-                        selected_index: self.selected_network_index
+                        selected_index: self.selected_network_index,
                     };
                 } else {
                     self.state = WizardState::NetworkTypeSelect;
@@ -455,7 +465,7 @@ impl SetupWizard {
 
                         // Move to ready state
                         self.state = WizardState::Ready {
-                            config: self.config.clone()
+                            config: self.config.clone(),
                         };
                     }
                     Err(_) => {

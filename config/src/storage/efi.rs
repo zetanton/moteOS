@@ -5,6 +5,9 @@
 
 extern crate alloc;
 
+use crate::error::ConfigError;
+use crate::storage::ConfigStorage;
+use crate::toml::{TomlParser, Value};
 use alloc::string::String;
 use alloc::vec::Vec;
 use uefi::{
@@ -12,9 +15,6 @@ use uefi::{
     table::runtime::{VariableAttributes, VariableVendor},
     CString16,
 };
-use crate::error::ConfigError;
-use crate::storage::ConfigStorage;
-use crate::toml::{TomlParser, Value};
 
 /// EFI variable name for moteOS configuration
 const CONFIG_VARIABLE_NAME: &str = "MoteOS-Config";
@@ -31,26 +31,26 @@ const MOTEOS_VENDOR_GUID: uefi::Guid = uefi::Guid::from_fields(
 );
 
 /// EFI variable storage for configuration
-/// 
+///
 /// This implementation stores configuration in EFI variables, which persist
 /// across reboots and are accessible from both UEFI boot services and runtime.
-/// 
+///
 /// The configuration is stored as a TOML string in the EFI variable "MoteOS-Config"
 /// with a custom vendor GUID.
-/// 
+///
 /// # System Table Lifetime
-/// 
+///
 /// The `system_table` reference is stored as `&'static` because:
 /// - During boot services: The system table is valid and provides access to runtime services
 /// - After `exit_boot_services()`: Boot services are invalidated, but runtime services
 ///   remain accessible through the system table pointer. The UEFI specification guarantees
 ///   that runtime services continue to work after exit_boot_services().
-/// 
+///
 /// Runtime services (including variable access) are designed to work after boot services
 /// exit, so this implementation is safe for use both before and after exit_boot_services().
 pub struct EfiConfigStorage {
     /// System table reference
-    /// 
+    ///
     /// This remains valid after `exit_boot_services()` because runtime services
     /// continue to function. The pointer itself is stable and runtime services
     /// are accessible throughout the kernel's lifetime.
@@ -59,7 +59,7 @@ pub struct EfiConfigStorage {
 
 impl EfiConfigStorage {
     /// Create a new EFI config storage instance
-    /// 
+    ///
     /// # Arguments
     /// * `system_table` - UEFI system table (can be None after exit_boot_services)
     pub fn new(system_table: Option<&'static SystemTable<Runtime>>) -> Self {
@@ -137,22 +137,17 @@ impl ConfigStorage for EfiConfigStorage {
             None => Ok(None),
             Some(data) => {
                 // Convert bytes to string
-                let toml_str = core::str::from_utf8(&data)
-                    .map_err(|e| {
-                        ConfigError::deserialization_error(&format!(
-                            "Invalid UTF-8 in EFI variable: {}",
-                            e
-                        ))
-                    })?;
+                let toml_str = core::str::from_utf8(&data).map_err(|e| {
+                    ConfigError::deserialization_error(&format!(
+                        "Invalid UTF-8 in EFI variable: {}",
+                        e
+                    ))
+                })?;
 
                 // Parse TOML
-                let value = TomlParser::parse(toml_str)
-                    .map_err(|e| {
-                        ConfigError::deserialization_error(&format!(
-                            "Failed to parse TOML: {:?}",
-                            e
-                        ))
-                    })?;
+                let value = TomlParser::parse(toml_str).map_err(|e| {
+                    ConfigError::deserialization_error(&format!("Failed to parse TOML: {:?}", e))
+                })?;
 
                 Ok(Some(value))
             }
@@ -161,10 +156,9 @@ impl ConfigStorage for EfiConfigStorage {
 
     fn save(&mut self, config: &Value) -> Result<(), ConfigError> {
         // Serialize to TOML
-        let toml_str = TomlParser::serialize(config)
-            .map_err(|e| {
-                ConfigError::serialization_error(&format!("Failed to serialize TOML: {:?}", e))
-            })?;
+        let toml_str = TomlParser::serialize(config).map_err(|e| {
+            ConfigError::serialization_error(&format!("Failed to serialize TOML: {:?}", e))
+        })?;
 
         // Convert to bytes
         let data = toml_str.as_bytes();
