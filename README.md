@@ -29,10 +29,27 @@
 
 🚧 **Early Development** - This project is currently in active development.
 
+## Testing
+
+Ready to test moteOS? Start here:
+
+```bash
+# Quick start - run all tests
+./tools/run-all-tests.sh
+
+# Or use Make targets
+make test-all
+```
+
+**Testing Resources:**
+- [Quick Start Guide](TESTING_QUICKSTART.md) - Get testing in 5 minutes
+- [Comprehensive Testing Plan](docs/TESTING_PLAN.md) - Full test strategy
+
 ## Documentation
 
 - [Product Requirements Document](docs/moteOS-PRD.md)
 - [Technical Specifications](docs/TECHNICAL_SPECIFICATIONS.md)
+- [Testing Plan](docs/TESTING_PLAN.md)
 
 ## License
 
