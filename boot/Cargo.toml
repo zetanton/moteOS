@@ -6,10 +6,18 @@ edition.workspace = true
 [lib]
 crate-type = ["lib"]
 
+# Binary target for UEFI boot
+[[bin]]
+name = "boot"
+path = "src/uefi_bin.rs"
+
 [dependencies]
 # Workspace dependencies
 uefi = { workspace = true }
-x86_64 = { workspace = true }
 linked_list_allocator = { workspace = true }
 spin = { workspace = true }
 shared = { path = "../shared" }
+
+# Architecture-specific dependencies
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_64 = { workspace = true }

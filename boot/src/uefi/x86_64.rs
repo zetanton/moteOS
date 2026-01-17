@@ -12,7 +12,6 @@ use uefi::proto::console::gop::GraphicsOutput;
 /// This is the main entry point called by UEFI firmware.
 /// It initializes UEFI services, acquires the framebuffer, gets the memory map,
 /// exits boot services, and then calls kernel_main().
-#[no_mangle]
 pub extern "efiapi" fn efi_main(
     image_handle: Handle,
     system_table: *mut uefi::table::SystemTable<uefi::table::Runtime>,
