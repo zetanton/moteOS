@@ -1,13 +1,13 @@
 // Memory management for moteOS
 // Handles memory map parsing, heap initialization, and memory allocation
 
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "kernel-linked")))]
 use linked_list_allocator::LockedHeap;
 
 /// Global heap allocator
 ///
 /// This allocator must be initialized with `init_heap()` before use.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "kernel-linked")))]
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
@@ -20,9 +20,14 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 /// - `heap_size` must be the size of a contiguous, usable memory region
 /// - This function must only be called once
 /// - The memory region must not be used for anything else
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "kernel-linked")))]
 pub unsafe fn init_heap(heap_start: usize, heap_size: usize) {
     ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
+}
+
+#[cfg(all(not(test), feature = "kernel-linked"))]
+pub unsafe fn init_heap(_heap_start: usize, _heap_size: usize) {
+    // Kernel provides the global allocator when linked.
 }
 
 #[cfg(test)]

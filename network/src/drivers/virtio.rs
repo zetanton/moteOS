@@ -7,6 +7,7 @@ use crate::pci::{find_pci_device, PciDevice, VIRTIO_NET_DEVICE_ID, VIRTIO_VENDOR
 use core::ptr;
 use spin::Mutex;
 extern crate alloc;
+use alloc::string::ToString;
 
 /// Virtio device status register values
 const VIRTIO_STATUS_ACKNOWLEDGE: u8 = 1;
@@ -46,13 +47,13 @@ const VIRTIO_NET_RX_QUEUE: u16 = 0;
 const VIRTIO_NET_TX_QUEUE: u16 = 1;
 
 /// Virtio-net feature bits
-const VIRTIO_NET_F_MAC: u32 = 1 << 5;
-const VIRTIO_NET_F_STATUS: u32 = 1 << 16;
-const VIRTIO_NET_F_CTRL_VQ: u32 = 1 << 17;
-const VIRTIO_NET_F_CTRL_RX: u32 = 1 << 18;
-const VIRTIO_NET_F_CTRL_VLAN: u32 = 1 << 19;
-const VIRTIO_NET_F_MRG_RXBUF: u32 = 1 << 15;
-const VIRTIO_F_VERSION_1: u32 = 1 << 32;
+const VIRTIO_NET_F_MAC: u64 = 1 << 5;
+const VIRTIO_NET_F_STATUS: u64 = 1 << 16;
+const VIRTIO_NET_F_CTRL_VQ: u64 = 1 << 17;
+const VIRTIO_NET_F_CTRL_RX: u64 = 1 << 18;
+const VIRTIO_NET_F_CTRL_VLAN: u64 = 1 << 19;
+const VIRTIO_NET_F_MRG_RXBUF: u64 = 1 << 15;
+const VIRTIO_F_VERSION_1: u64 = 1u64 << 32;
 
 /// Virtqueue descriptor flags
 const VIRTQ_DESC_F_NEXT: u16 = 1;
@@ -286,6 +287,10 @@ pub struct VirtioNet {
     initialized: bool,
 }
 
+// SAFETY: VirtioNet is only used behind a global lock; callers must ensure no
+// concurrent access to raw pointers across threads.
+unsafe impl Send for VirtioNet {}
+
 impl VirtioNet {
     /// Create a new virtio-net driver instance
     ///
@@ -490,7 +495,7 @@ impl VirtioNet {
                         ));
                     }
 
-                    let phys = self.virt_to_phys(ptr as usize);
+                    let phys = ptr as u64;
 
                     // Add buffer to RX queue and get descriptor index
                     let desc_idx = rx_queue

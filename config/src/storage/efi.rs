@@ -8,7 +8,6 @@ extern crate alloc;
 use crate::error::ConfigError;
 use crate::storage::ConfigStorage;
 use crate::toml::{TomlParser, Value};
-use alloc::string::String;
 use alloc::vec::Vec;
 
 // UEFI types are only available when building for UEFI targets
@@ -20,9 +19,11 @@ use alloc::vec::Vec;
 ))]
 mod efi_impl {
     use super::*;
+    use alloc::format;
     use uefi::{
         prelude::*,
         table::runtime::{VariableAttributes, VariableVendor},
+        table::Runtime,
         CString16,
     };
 
@@ -31,13 +32,13 @@ mod efi_impl {
 
     /// Custom GUID for moteOS EFI variables
     /// Generated UUID: 8a4e8e1e-3c5f-4a9b-9d2e-1f3a5b7c9d0e
-    const MOTEOS_VENDOR_GUID: uefi::Guid = uefi::Guid::from_fields(
-        0x8a4e8e1e,
-        0x3c5f,
-        0x4a9b,
+    const MOTEOS_VENDOR_GUID: uefi::Guid = uefi::Guid::new(
+        [0x8a, 0x4e, 0x8e, 0x1e],
+        [0x3c, 0x5f],
+        [0x4a, 0x9b],
         0x9d,
         0x2e,
-        &[0x1f, 0x3a, 0x5b, 0x7c, 0x9d, 0x0e],
+        [0x1f, 0x3a, 0x5b, 0x7c, 0x9d, 0x0e],
     );
 
     /// EFI variable storage for configuration
@@ -67,6 +68,7 @@ mod efi_impl {
         /// Read EFI variable
         fn read_variable(&self) -> Result<Option<Vec<u8>>, ConfigError> {
             let name = self.variable_name()?;
+            let name = name.as_ref();
 
             // Note: VariableVendor is a newtype enum with predefined variants,
             // but we need a custom GUID. Use unsafe transmute as workaround.
@@ -76,23 +78,24 @@ mod efi_impl {
             };
 
             // Try to get runtime services
-            let rt = self
-                .system_table
-                .ok_or_else(|| ConfigError::efi_error("System table not available"))?
-                .runtime_services();
+            let rt = unsafe {
+                self.system_table
+                    .ok_or_else(|| ConfigError::efi_error("System table not available"))?
+                    .runtime_services()
+            };
 
             // Read variable with maximum size (64KB EFI variable limit)
             let mut buffer = [0u8; 65536];
 
             match rt.get_variable(name, &vendor, &mut buffer) {
-                Ok((size, _attrs)) => {
-                    let data = buffer[..size].to_vec();
-                    Ok(Some(data))
-                }
-                Err(uefi::Status::NOT_FOUND) => Ok(None),
-                Err(status) => {
-                    let msg = format!("Failed to read EFI variable: {:?}", status);
-                    Err(ConfigError::efi_error(&msg))
+                Ok((data, _attrs)) => Ok(Some(data.to_vec())),
+                Err(err) => {
+                    if err.status() == uefi::Status::NOT_FOUND {
+                        Ok(None)
+                    } else {
+                        let msg = format!("Failed to read EFI variable: {:?}", err.status());
+                        Err(ConfigError::efi_error(&msg))
+                    }
                 }
             }
         }
@@ -107,6 +110,7 @@ mod efi_impl {
             }
 
             let name = self.variable_name()?;
+            let name = name.as_ref();
 
             // Note: VariableVendor is a newtype enum with predefined variants,
             // but we need a custom GUID. Use unsafe transmute as workaround.
@@ -119,10 +123,11 @@ mod efi_impl {
                 | VariableAttributes::BOOTSERVICE_ACCESS
                 | VariableAttributes::RUNTIME_ACCESS;
 
-            let rt = self
-                .system_table
-                .ok_or_else(|| ConfigError::efi_error("System table not available"))?
-                .runtime_services();
+            let rt = unsafe {
+                self.system_table
+                    .ok_or_else(|| ConfigError::efi_error("System table not available"))?
+                    .runtime_services()
+            };
 
             rt.set_variable(name, &vendor, attributes, data)
                 .map_err(|status| {

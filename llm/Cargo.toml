@@ -8,5 +8,9 @@ crate-type = ["lib"]
 
 [dependencies]
 miniserde = { workspace = true }
-network = { path = "../network" }
+network = { path = "../network", default-features = false }
 smoltcp = { workspace = true }
+
+[features]
+default = ["tls"]
+tls = ["network/tls"]

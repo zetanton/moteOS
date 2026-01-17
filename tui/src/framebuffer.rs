@@ -119,6 +119,9 @@ pub struct Framebuffer {
     pixel_format: PixelFormat,
 }
 
+// SAFETY: Framebuffer is only accessed behind a global lock in the kernel.
+unsafe impl Send for Framebuffer {}
+
 impl Framebuffer {
     /// Create a new framebuffer from info
     ///

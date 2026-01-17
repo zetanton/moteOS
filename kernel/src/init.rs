@@ -4,7 +4,8 @@
 //! including the heap allocator, network stack, and LLM providers.
 
 use alloc::boxed::Box;
-use alloc::string::String;
+use alloc::format;
+use alloc::string::{String, ToString};
 use config::{decrypt_api_key, MoteConfig};
 use linked_list_allocator::LockedHeap;
 use llm::{AnthropicClient, GroqClient, LlmProvider, OpenAiClient, XaiClient};
@@ -31,7 +32,9 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 /// The heap memory region must be valid and not used for anything else.
 pub fn init_heap(heap_start: usize, heap_size: usize) {
     unsafe {
-        ALLOCATOR.lock().init(heap_start, heap_size);
+        ALLOCATOR
+            .lock()
+            .init(heap_start as *mut u8, heap_size);
     }
 }
 
@@ -149,12 +152,13 @@ fn subnet_mask_to_prefix(mask: &[u8; 4]) -> u8 {
 /// Get DNS server from network config or use default
 ///
 /// Returns the first DNS server from the config, or a default (8.8.8.8) if none is configured.
-fn get_dns_server(network: Option<&NetworkStack>) -> Ipv4Address {
+fn get_dns_server(network: Option<&mut NetworkStack>) -> Ipv4Address {
     // Try to get DNS from network stack DHCP config
     if let Some(net) = network {
         if let Some(config) = net.dhcp_config() {
             if let Some(dns) = config.dns.first() {
-                return Ipv4Address::new(dns[0], dns[1], dns[2], dns[3]);
+                let bytes = dns.as_bytes();
+                return Ipv4Address::new(bytes[0], bytes[1], bytes[2], bytes[3]);
             }
         }
     }
@@ -194,7 +198,7 @@ pub fn sleep_ms(ms: i64) {
 /// Returns a tuple of (provider, provider_name, model_name) on success.
 pub fn init_provider(
     config: &MoteConfig,
-    network: Option<&NetworkStack>,
+    network: Option<&mut NetworkStack>,
 ) -> Result<(Box<dyn LlmProvider>, String, String), String> {
     let provider_name = &config.preferences.default_provider;
     let dns_server = get_dns_server(network);

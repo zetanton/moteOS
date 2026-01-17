@@ -131,7 +131,7 @@ impl LlmProvider for AnthropicClient {
         messages: &[Message],
         model: &str,
         config: &GenerationConfig,
-        mut on_token: impl FnMut(&str),
+        mut on_token: &mut dyn FnMut(&str),
     ) -> Result<CompletionResult, LlmError> {
         if self.api_key.trim().is_empty() {
             return Err(LlmError::AuthError("missing API key".into()));

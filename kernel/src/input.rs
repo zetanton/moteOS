@@ -4,7 +4,9 @@
 //! It reads keyboard events and dispatches them to the appropriate handlers.
 
 use crate::GLOBAL_STATE;
-use alloc::string::String;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use config::Key;
 use llm::{GenerationConfig, Message, Role};
 use tui::types::Key as TuiKey;
@@ -42,28 +44,28 @@ fn convert_key(key: Key) -> TuiKey {
         Key::Char(ch) => TuiKey::Char(ch),
         Key::Enter => TuiKey::Enter,
         Key::Backspace => TuiKey::Backspace,
-        Key::Escape => TuiKey::Escape,
+        Key::Esc => TuiKey::Escape,
         Key::Tab => TuiKey::Tab,
         Key::Up => TuiKey::Up,
         Key::Down => TuiKey::Down,
         Key::Left => TuiKey::Left,
         Key::Right => TuiKey::Right,
-        Key::Home => TuiKey::Home,
-        Key::End => TuiKey::End,
-        Key::PageUp => TuiKey::PageUp,
-        Key::PageDown => TuiKey::PageDown,
-        Key::F1 => TuiKey::F1,
-        Key::F2 => TuiKey::F2,
-        Key::F3 => TuiKey::F3,
-        Key::F4 => TuiKey::F4,
-        Key::F5 => TuiKey::F5,
-        Key::F6 => TuiKey::F6,
-        Key::F7 => TuiKey::F7,
-        Key::F8 => TuiKey::F8,
-        Key::F9 => TuiKey::F9,
-        Key::F10 => TuiKey::F10,
-        Key::F11 => TuiKey::F11,
-        Key::F12 => TuiKey::F12,
+        Key::Delete => TuiKey::Delete,
+        Key::F(n) => match n {
+            1 => TuiKey::F1,
+            2 => TuiKey::F2,
+            3 => TuiKey::F3,
+            4 => TuiKey::F4,
+            5 => TuiKey::F5,
+            6 => TuiKey::F6,
+            7 => TuiKey::F7,
+            8 => TuiKey::F8,
+            9 => TuiKey::F9,
+            10 => TuiKey::F10,
+            11 => TuiKey::F11,
+            12 => TuiKey::F12,
+            _ => TuiKey::Escape,
+        },
     }
 }
 
@@ -163,7 +165,7 @@ fn switch_provider(kernel_state: &mut crate::KernelState) {
     temp_config.preferences.default_provider = next_provider.to_string();
 
     // Try to initialize the next provider
-    match crate::init::init_provider(&temp_config, kernel_state.network.as_ref()) {
+    match crate::init::init_provider(&temp_config, kernel_state.network.as_mut()) {
         Ok((provider, name, model)) => {
             kernel_state.current_provider = provider;
             kernel_state.current_provider_name = name;
@@ -225,17 +227,18 @@ fn send_message(kernel_state: &mut crate::KernelState, text: String) {
         top_k: None,
     };
 
+    let mut on_token = |token: &str| {
+        // Stream token to chat screen
+        response_text.push_str(token);
+        kernel_state
+            .chat_screen
+            .update_last_message(&response_text);
+    };
     let result = kernel_state.current_provider.complete(
         &kernel_state.conversation,
         &kernel_state.current_model,
         &config,
-        |token| {
-            // Stream token to chat screen
-            response_text.push_str(token);
-            kernel_state
-                .chat_screen
-                .update_last_message(&response_text);
-        },
+        &mut on_token,
     );
 
     // Mark as no longer generating

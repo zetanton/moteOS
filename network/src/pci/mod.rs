@@ -53,9 +53,9 @@ impl PciDevice {
 
         unsafe {
             // Write address to 0xCF8
-            x86_64::instructions::port::Port::new(0xCF8).write(address);
+            x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
             // Read data from 0xCFC
-            x86_64::instructions::port::Port::new(0xCFC).read()
+            x86_64::instructions::port::Port::<u32>::new(0xCFC).read()
         }
     }
 
@@ -70,9 +70,9 @@ impl PciDevice {
 
         unsafe {
             // Write address to 0xCF8
-            x86_64::instructions::port::Port::new(0xCF8).write(address);
+            x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
             // Write data to 0xCFC
-            x86_64::instructions::port::Port::new(0xCFC).write(value);
+            x86_64::instructions::port::Port::<u32>::new(0xCFC).write(value);
         }
     }
 
@@ -139,8 +139,8 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                         | ((bus as u32) << 16)
                         | ((device as u32) << 11)
                         | ((function as u32) << 8);
-                    x86_64::instructions::port::Port::new(0xCF8).write(address);
-                    x86_64::instructions::port::Port::new(0xCFC).read() as u16
+                    x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
+                    x86_64::instructions::port::Port::<u32>::new(0xCFC).read() as u16
                 };
 
                 // If vendor ID is 0xFFFF, device doesn't exist
@@ -155,8 +155,8 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                         | ((device as u32) << 11)
                         | ((function as u32) << 8)
                         | 0x00;
-                    x86_64::instructions::port::Port::new(0xCF8).write(address);
-                    let dword = x86_64::instructions::port::Port::new(0xCFC).read();
+                    x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
+                    let dword = x86_64::instructions::port::Port::<u32>::new(0xCFC).read();
                     ((dword >> 16) & 0xFFFF) as u16
                 };
 
@@ -167,8 +167,8 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                         | ((device as u32) << 11)
                         | ((function as u32) << 8)
                         | 0x08;
-                    x86_64::instructions::port::Port::new(0xCF8).write(address);
-                    x86_64::instructions::port::Port::new(0xCFC).read()
+                    x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
+                    x86_64::instructions::port::Port::<u32>::new(0xCFC).read()
                 };
 
                 let class_code = ((class_reg >> 24) & 0xFF) as u8;
@@ -183,9 +183,9 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                             | ((bus as u32) << 16)
                             | ((device as u32) << 11)
                             | ((function as u32) << 8)
-                            | (0x10 + (i as u8 * 4));
-                        x86_64::instructions::port::Port::new(0xCF8).write(address);
-                        x86_64::instructions::port::Port::new(0xCFC).read()
+                            | (0x10u32 + (i as u32 * 4));
+                        x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
+                        x86_64::instructions::port::Port::<u32>::new(0xCFC).read()
                     };
                 }
 
@@ -196,8 +196,8 @@ pub fn scan_pci_bus() -> alloc::vec::Vec<PciDevice> {
                         | ((device as u32) << 11)
                         | ((function as u32) << 8)
                         | 0x3C;
-                    x86_64::instructions::port::Port::new(0xCF8).write(address);
-                    x86_64::instructions::port::Port::new(0xCFC).read()
+                    x86_64::instructions::port::Port::<u32>::new(0xCF8).write(address);
+                    x86_64::instructions::port::Port::<u32>::new(0xCFC).read()
                 };
                 let interrupt_line = (interrupt_reg & 0xFF) as u8;
 

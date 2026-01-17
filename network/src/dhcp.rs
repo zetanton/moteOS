@@ -16,7 +16,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use smoltcp::socket::dhcpv4::{Config as DhcpConfig, Event, Socket};
+use smoltcp::socket::dhcpv4::{Event, Socket};
 use smoltcp::wire::Ipv4Address;
 
 pub type DhcpSocket = Socket<'static>;
@@ -98,46 +98,38 @@ impl core::fmt::Display for DhcpState {
 /// # Returns
 /// * `Some(IpConfig)` - Configuration if available
 /// * `None` - No configuration available yet
-pub fn extract_config(socket: &DhcpSocket) -> Option<IpConfig> {
-    // Get the configuration from the DHCP socket
-    let config = socket.config()?;
+pub fn extract_config(socket: &mut DhcpSocket) -> Option<IpConfig> {
+    match socket.poll()? {
+        Event::Configured(config) => {
+            // Extract IP address and prefix length
+            let ip = config.address.address();
+            let prefix_len = config.address.prefix_len();
 
-    // Extract IP address and prefix length
-    let ip = config.address?.address();
-    let prefix_len = config.address?.prefix_len();
+            let mut ip_config = IpConfig::new(ip, prefix_len);
 
-    let mut ip_config = IpConfig::new(ip, prefix_len);
+            // Extract gateway (router)
+            if let Some(router) = config.router {
+                ip_config.gateway = Some(router);
+            }
 
-    // Extract gateway (router)
-    if let Some(router) = config.router {
-        ip_config.gateway = Some(router);
-    }
+            // Extract DNS servers
+            for dns in config.dns_servers.iter() {
+                ip_config.dns.push(*dns);
+            }
 
-    // Extract DNS servers
-    if let Some(dns_servers) = config.dns_servers {
-        for dns in dns_servers.iter().flatten() {
-            ip_config.dns.push(*dns);
+            Some(ip_config)
         }
+        Event::Deconfigured => None,
     }
-
-    Some(ip_config)
 }
 
 /// Map DHCP socket state to our DhcpState enum
-pub fn socket_to_state(socket: &DhcpSocket) -> DhcpState {
-    if !socket.is_open() {
-        return DhcpState::Init;
+pub fn socket_to_state(socket: &mut DhcpSocket) -> DhcpState {
+    match socket.poll() {
+        Some(Event::Configured(_)) => DhcpState::Configured,
+        Some(Event::Deconfigured) => DhcpState::Init,
+        None => DhcpState::Discovering,
     }
-
-    // Check if we have a valid configuration
-    if let Some(config) = socket.config() {
-        if config.address.is_some() {
-            return DhcpState::Configured;
-        }
-    }
-
-    // If socket is open but no config, assume discovering
-    DhcpState::Discovering
 }
 
 /// Process DHCP events and update state
@@ -149,10 +141,6 @@ pub fn socket_to_state(socket: &DhcpSocket) -> DhcpState {
 /// * `Some(IpConfig)` - New configuration if DHCP completed successfully
 /// * `None` - No new configuration (still in progress or no change)
 pub fn process_events(socket: &mut DhcpSocket) -> Option<IpConfig> {
-    // Poll the socket for events
-    socket.poll();
-
-    // Check if we have a valid configuration
     extract_config(socket)
 }
 

@@ -16,19 +16,34 @@ x86_64 = { workspace = true }
 # For virtio
 volatile = "0.5"
 
-# TLS 1.3 support
-embedded-tls = { version = "0.17", default-features = false }
-embedded-io = { version = "0.6", default-features = false }
+# TLS 1.3 support (optional)
+embedded-tls = { version = "0.17", default-features = false, optional = true }
+embedded-io = { version = "0.6", default-features = false, optional = true }
 
-# Cryptography (required by embedded-tls)
-sha2 = { version = "0.10", default-features = false }
-hmac = { version = "0.12", default-features = false }
-aes-gcm = { version = "0.10", default-features = false, features = ["aes"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
-rand_core = { version = "0.6", default-features = false }
+# Cryptography (required by embedded-tls, optional)
+sha2 = { version = "0.10", default-features = false, optional = true }
+hmac = { version = "0.12", default-features = false, optional = true }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes"], optional = true }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa"], optional = true }
+rand_core = { version = "0.6", default-features = false, optional = true }
 heapless = "0.8"
 
-# For certificate verification
-rustls-webpki = { version = "0.102", default-features = false, features = ["alloc"] }
-webpki-roots = { version = "0.26", default-features = false }
-x509-parser = { version = "0.16", default-features = false, features = ["verify"] }
+# For certificate verification (optional)
+rustls-webpki = { version = "0.102", default-features = false, features = ["alloc"], optional = true }
+webpki-roots = { version = "0.26", default-features = false, optional = true }
+x509-parser = { version = "0.16", default-features = false, features = ["verify"], optional = true }
+
+[features]
+default = ["tls"]
+tls = [
+  "embedded-tls",
+  "embedded-io",
+  "sha2",
+  "hmac",
+  "aes-gcm",
+  "p256",
+  "rand_core",
+  "rustls-webpki",
+  "webpki-roots",
+  "x509-parser",
+]

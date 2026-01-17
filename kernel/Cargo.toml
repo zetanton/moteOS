@@ -12,13 +12,14 @@ linked_list_allocator = { workspace = true }
 
 # Logging
 log = { workspace = true }
+smoltcp = { workspace = true }
 
 # Internal dependencies
 shared = { path = "../shared" }
-network = { path = "../network", optional = true }
+network = { path = "../network", optional = true, default-features = false }
 config = { path = "../config", optional = true }
-llm = { path = "../llm", optional = true }
-tui = { path = "../tui" }
+llm = { path = "../llm", optional = true, default-features = false }
+tui = { path = "../tui", optional = true }
 
 # Serialization for heapless types
 heapless = { workspace = true }
@@ -29,5 +30,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["full"]
-full = ["network", "llm", "config"]
+full = ["network", "llm", "config", "tui"]
+full-tls = ["full", "network/tls", "llm/tls"]
 uefi-minimal = []
+uefi-full = ["full"]

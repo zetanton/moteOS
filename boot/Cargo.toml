@@ -18,7 +18,7 @@ uefi = { workspace = true }
 linked_list_allocator = { workspace = true }
 spin = { workspace = true }
 shared = { path = "../shared" }
-kernel = { path = "../kernel", default-features = false, features = ["uefi-minimal"] }
+kernel = { path = "../kernel", default-features = false, features = ["uefi-full"] }
 
 # Architecture-specific dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]

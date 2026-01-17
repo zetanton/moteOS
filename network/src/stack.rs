@@ -10,6 +10,7 @@ use crate::dns::{self, DnsResponse, ResponseCode};
 use crate::drivers::NetworkDriver;
 use crate::error::NetError;
 use alloc::boxed::Box;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use smoltcp::iface::{Config, Interface, Route, SocketSet};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
@@ -147,21 +148,19 @@ impl NetworkStack {
         let config = Config::new(HardwareAddress::Ethernet(mac_address));
 
         // Create interface
-        let mut iface = Interface::new(config, &mut device);
+        let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
 
         // Configure IP address if provided
+        let mut ip_failed = false;
         if let Some((ip, prefix_len)) = ip_config {
             iface.update_ip_addrs(|ip_addrs| {
                 if ip_addrs
                     .push(IpCidr::new(IpAddress::Ipv4(ip), prefix_len))
                     .is_err()
                 {
-                    return Err(NetError::DriverError(
-                        "Failed to add IP address".to_string(),
-                    ));
+                    ip_failed = true;
                 }
-                Ok(())
-            })?;
+            });
         } else {
             // Use 0.0.0.0/0 as default (will need DHCP)
             iface.update_ip_addrs(|ip_addrs| {
@@ -169,12 +168,14 @@ impl NetworkStack {
                     .push(IpCidr::new(IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), 0))
                     .is_err()
                 {
-                    return Err(NetError::DriverError(
-                        "Failed to add default IP address".to_string(),
-                    ));
+                    ip_failed = true;
                 }
-                Ok(())
-            })?;
+            });
+        }
+        if ip_failed {
+            return Err(NetError::DriverError(
+                "Failed to add IP address".to_string(),
+            ));
         }
 
         // Create socket set
@@ -210,16 +211,10 @@ impl NetworkStack {
         self.device.driver.poll()?;
 
         // Poll the smoltcp interface
-        match self
+        let _ = self
             .iface
-            .poll(timestamp, &mut self.device, &mut self.sockets)
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(NetError::DriverError(format!(
-                "smoltcp poll error: {:?}",
-                e
-            ))),
-        }
+            .poll(timestamp, &mut self.device, &mut self.sockets);
+        Ok(())
     }
 
     /// Get a reference to the interface
@@ -282,12 +277,13 @@ impl NetworkStack {
     /// # Returns
     /// * `Some(DhcpState)` - Current DHCP state if DHCP is running
     /// * `None` - DHCP is not running
-    pub fn dhcp_state(&self) -> Option<DhcpState> {
-        self.dhcp_handle.and_then(|handle| {
-            self.sockets
-                .get::<DhcpSocket>(handle)
-                .map(dhcp::socket_to_state)
-        })
+    pub fn dhcp_state(&mut self) -> Option<DhcpState> {
+        if let Some(handle) = self.dhcp_handle {
+            let socket = self.sockets.get_mut::<DhcpSocket>(handle);
+            Some(dhcp::socket_to_state(socket))
+        } else {
+            None
+        }
     }
 
     /// Get the current DHCP configuration
@@ -295,12 +291,13 @@ impl NetworkStack {
     /// # Returns
     /// * `Some(IpConfig)` - IP configuration if DHCP has acquired one
     /// * `None` - No configuration available yet
-    pub fn dhcp_config(&self) -> Option<IpConfig> {
-        self.dhcp_handle.and_then(|handle| {
-            self.sockets
-                .get::<DhcpSocket>(handle)
-                .and_then(dhcp::extract_config)
-        })
+    pub fn dhcp_config(&mut self) -> Option<IpConfig> {
+        if let Some(handle) = self.dhcp_handle {
+            let socket = self.sockets.get_mut::<DhcpSocket>(handle);
+            dhcp::extract_config(socket)
+        } else {
+            None
+        }
     }
 
     /// Acquire IP configuration from DHCP (blocking with timeout)
@@ -409,6 +406,7 @@ impl NetworkStack {
     /// * `Err(NetError)` - Failed to apply configuration
     pub fn apply_dhcp_config(&mut self, config: &IpConfig) -> Result<(), NetError> {
         // Update IP address
+        let mut ip_failed = false;
         self.iface.update_ip_addrs(|ip_addrs| {
             // Clear existing addresses
             ip_addrs.clear();
@@ -418,12 +416,14 @@ impl NetworkStack {
                 .push(IpCidr::new(IpAddress::Ipv4(config.ip), config.prefix_len))
                 .is_err()
             {
-                return Err(NetError::DhcpConfigFailed(
-                    "Failed to set IP address".to_string(),
-                ));
+                ip_failed = true;
             }
-            Ok(())
-        })?;
+        });
+        if ip_failed {
+            return Err(NetError::DhcpConfigFailed(
+                "Failed to set IP address".to_string(),
+            ));
+        }
 
         // Update default gateway (route)
         if let Some(gateway) = config.gateway {
@@ -514,7 +514,7 @@ impl NetworkStack {
 
         // Bind to an ephemeral port (use transaction_id as source port for simplicity)
         let local_port = 49152 + (transaction_id % 16384);
-        let bind_endpoint = IpEndpoint::new(IpAddress::Unspecified, local_port);
+        let bind_endpoint = IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), local_port);
 
         if udp_socket.bind(bind_endpoint).is_err() {
             return Err(NetError::DnsError("Failed to bind UDP socket".into()));

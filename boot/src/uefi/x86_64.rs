@@ -171,18 +171,21 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
     // Get current mode info
     let mode_info = gop.current_mode_info();
     let (width, height) = mode_info.resolution();
-    let stride = mode_info.stride();
+    let stride_pixels = mode_info.stride();
 
     // Determine pixel format from mode info
+    // Force 32bpp BGRA for QEMU/OVMF; 24bpp modes often appear as grayscale.
     let pixel_format = match mode_info.pixel_format() {
-        uefi::proto::console::gop::PixelFormat::Rgb => PixelFormat::Rgb,
-        uefi::proto::console::gop::PixelFormat::Bgr => PixelFormat::Bgr,
-        uefi::proto::console::gop::PixelFormat::Bitmask => PixelFormat::Bgra, // Default
-        uefi::proto::console::gop::PixelFormat::BltOnly => PixelFormat::Bgra, // Default
+        uefi::proto::console::gop::PixelFormat::Rgb => PixelFormat::Bgra,
+        uefi::proto::console::gop::PixelFormat::Bgr => PixelFormat::Bgra,
+        uefi::proto::console::gop::PixelFormat::Bitmask => PixelFormat::Bgra,
+        uefi::proto::console::gop::PixelFormat::BltOnly => PixelFormat::Bgra,
     };
 
     // Get framebuffer base address
     let framebuffer_base = gop.frame_buffer().as_mut_ptr() as *mut u8;
+
+    let stride = stride_pixels * 4;
 
     Ok(FramebufferInfo::new(
         framebuffer_base,

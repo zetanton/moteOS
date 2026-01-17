@@ -54,7 +54,7 @@ pub trait LlmProvider: Send {
         messages: &[Message],
         model: &str,
         config: &GenerationConfig,
-        on_token: impl FnMut(&str),
+        on_token: &mut dyn FnMut(&str),
     ) -> Result<CompletionResult, LlmError>;
 
     /// Validate that the API key is valid and the provider is accessible.

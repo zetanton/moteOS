@@ -26,11 +26,16 @@ use llm::{GenerationConfig, LlmProvider, Message, Role};
 #[cfg(not(feature = "uefi-minimal"))]
 use network::{poll_network_stack, NetworkStack};
 #[cfg(not(feature = "uefi-minimal"))]
-use shared::BootInfo;
+use shared::{BootInfo, Color, Rect};
 #[cfg(not(feature = "uefi-minimal"))]
 use spin::Mutex;
 #[cfg(not(feature = "uefi-minimal"))]
 use tui::{screens::ChatScreen, Screen, Theme, DARK_THEME, LIGHT_THEME};
+#[cfg(not(feature = "uefi-minimal"))]
+use tui::font::Font;
+
+#[cfg(not(feature = "uefi-minimal"))]
+const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../assets/ter-u16n.psf");
 
 #[cfg(not(feature = "uefi-minimal"))]
 pub mod event_loop;
@@ -140,14 +145,32 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
 #[cfg(not(feature = "uefi-minimal"))]
 #[no_mangle]
 pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
+    serial::println("moteOS: kernel_main reached (full)");
     // Initialize heap allocator
     init::init_heap(boot_info.heap_start, boot_info.heap_size);
 
+    // Force a visible test pattern to confirm framebuffer writes in full mode.
+    {
+        let fb = boot_info.framebuffer;
+        let mid_x = fb.width / 2;
+        let mid_y = fb.height / 2;
+        fb.fill_rectangle_safe(Rect::new(0, 0, mid_x, mid_y), Color::rgb(255, 0, 0));
+        fb.fill_rectangle_safe(Rect::new(mid_x, 0, fb.width - mid_x, mid_y), Color::rgb(0, 255, 0));
+        fb.fill_rectangle_safe(Rect::new(0, mid_y, mid_x, fb.height - mid_y), Color::rgb(0, 0, 255));
+        fb.fill_rectangle_safe(
+            Rect::new(mid_x, mid_y, fb.width - mid_x, fb.height - mid_y),
+            Color::rgb(255, 255, 255),
+        );
+    }
+
     // Load configuration
-    let config_storage = EfiConfigStorage;
+    let config_storage = EfiConfigStorage::new(None);
     let setup_complete = config_storage.exists();
     let config = match config_storage.load() {
-        Ok(Some(cfg)) => cfg,
+        Ok(Some(_value)) => {
+            // TODO: Deserialize config value into MoteConfig.
+            MoteConfig::default()
+        }
         Ok(None) | Err(_) => MoteConfig::default(),
     };
 
@@ -156,13 +179,18 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
         config::ThemeChoice::Dark => &DARK_THEME,
         config::ThemeChoice::Light => &LIGHT_THEME,
     };
-    let screen = unsafe { Screen::new(boot_info.framebuffer.into(), theme) };
+    let mut screen = unsafe { Screen::new(boot_info.framebuffer.into(), theme) };
+    if let Ok(font) = unsafe { Font::load_psf(DEFAULT_FONT_BYTES) } {
+        // Leak the font to keep a 'static reference for the screen.
+        let font = Box::leak(Box::new(font));
+        screen.set_font(font);
+    }
 
     // Initialize network (if configured)
-    let network = init::init_network(&config).ok();
+    let mut network = init::init_network(&config).ok();
 
     // Initialize LLM provider
-    let (provider, provider_name, model) = match init::init_provider(&config, network.as_ref()) {
+    let (provider, provider_name, model) = match init::init_provider(&config, network.as_mut()) {
         Ok((p, name, m)) => (p, name, m),
         Err(_) => {
             // Fallback to a dummy provider or panic

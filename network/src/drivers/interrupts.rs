@@ -2,6 +2,8 @@
 
 use crate::drivers::virtio::{get_virtio_net, VirtioNet};
 use crate::error::NetError;
+extern crate alloc;
+use alloc::string::ToString;
 
 /// Virtio-net interrupt handler
 ///
@@ -11,7 +13,7 @@ use crate::error::NetError;
 /// # Safety
 /// This function must only be called from an interrupt handler context.
 #[cfg(target_arch = "x86_64")]
-pub unsafe extern "x86-interrupt" fn virtio_net_interrupt_handler(
+pub unsafe extern "C" fn virtio_net_interrupt_handler(
     _stack_frame: x86_64::structures::idt::InterruptStackFrame,
 ) {
     // Get the virtio-net driver instance

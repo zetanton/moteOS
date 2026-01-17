@@ -159,20 +159,23 @@ impl HttpClient {
         body: Option<&[u8]>,
         headers: &[(&str, &str)],
         get_time_ms: &mut F,
-        sleep_ms: Option<&mut S>,
+        mut sleep_ms: Option<&mut S>,
     ) -> Result<HttpResponse, HttpError>
     where
         F: FnMut() -> i64,
         S: FnMut(i64),
     {
         let parsed = parse_url(url)?;
+        // Raw pointers to avoid borrow conflicts between read callbacks and response parsing.
+        let get_time_ms_ptr: *mut F = get_time_ms;
+        let sleep_ms_ptr: *mut Option<&mut S> = &mut sleep_ms;
         let ip = resolve_host_ipv4(
             stack,
             parsed.host,
             self.dns_server,
             self.connect_timeout_ms,
             get_time_ms,
-            sleep_ms,
+            sleep_ms.as_deref_mut(),
         )?;
 
         let request_bytes = build_request_bytes(&parsed, method, headers, body);
@@ -188,23 +191,27 @@ impl HttpClient {
                         parsed.port,
                         self.connect_timeout_ms,
                         &mut *get_time_ms,
-                        sleep_ms,
+                        sleep_ms.as_deref_mut(),
                     )?;
 
-                    tls.write(stack, &request_bytes, &mut *get_time_ms, sleep_ms)?;
+                    tls.write(
+                        stack,
+                        &request_bytes,
+                        &mut *get_time_ms,
+                        sleep_ms.as_deref_mut(),
+                    )?;
 
                     let mut read_fn = |buf: &mut [u8]| -> Result<usize, HttpError> {
-                        let n = tls.read(stack, buf, &mut *get_time_ms, sleep_ms)?;
+                        let get_time_ms = unsafe { &mut *get_time_ms_ptr };
+                        let sleep_ms = unsafe { (&mut *sleep_ms_ptr).as_deref_mut() };
+                        let n = tls.read(stack, buf, get_time_ms, sleep_ms)?;
                         Ok(n)
                     };
 
                     let response = read_http_response(
                         &mut read_fn,
-                        self.read_timeout_ms,
                         self.max_header_bytes,
                         self.max_body_bytes,
-                        &mut *get_time_ms,
-                        sleep_ms,
                     )?;
                     tls.close(stack);
                     Ok(response)
@@ -224,34 +231,27 @@ impl HttpClient {
                     parsed.port,
                     self.connect_timeout_ms,
                     &mut *get_time_ms,
-                    sleep_ms,
+                    sleep_ms.as_deref_mut(),
                 )?;
                 tcp.write_all(
                     stack,
                     &request_bytes,
                     self.read_timeout_ms,
                     &mut *get_time_ms,
-                    sleep_ms,
+                    sleep_ms.as_deref_mut(),
                 )?;
 
                 let mut read_fn = |buf: &mut [u8]| -> Result<usize, HttpError> {
-                    let n = tcp.read(
-                        stack,
-                        buf,
-                        self.read_timeout_ms,
-                        &mut *get_time_ms,
-                        sleep_ms,
-                    )?;
+                    let get_time_ms = unsafe { &mut *get_time_ms_ptr };
+                    let sleep_ms = unsafe { (&mut *sleep_ms_ptr).as_deref_mut() };
+                    let n = tcp.read(stack, buf, self.read_timeout_ms, get_time_ms, sleep_ms)?;
                     Ok(n)
                 };
 
                 let response = read_http_response(
                     &mut read_fn,
-                    self.read_timeout_ms,
                     self.max_header_bytes,
                     self.max_body_bytes,
-                    &mut *get_time_ms,
-                    sleep_ms,
                 )?;
                 tcp.close(stack);
                 Ok(response)
@@ -461,19 +461,11 @@ fn parse_ipv4_literal(host: &str) -> Option<Ipv4Address> {
     Some(Ipv4Address::from_bytes(&parts))
 }
 
-fn read_http_response<F, S>(
+fn read_http_response(
     read: &mut impl FnMut(&mut [u8]) -> Result<usize, HttpError>,
-    read_timeout_ms: i64,
     max_header_bytes: usize,
     max_body_bytes: usize,
-    get_time_ms: &mut F,
-    mut sleep_ms: Option<&mut S>,
-) -> Result<HttpResponse, HttpError>
-where
-    F: FnMut() -> i64,
-    S: FnMut(i64),
-{
-    let start_time = get_time_ms();
+) -> Result<HttpResponse, HttpError> {
     let mut buf: Vec<u8> = Vec::new();
     let mut tmp = [0u8; 1024];
 
@@ -486,10 +478,6 @@ where
             return Err(HttpError::HeaderTooLarge);
         }
 
-        if get_time_ms() - start_time > read_timeout_ms {
-            return Err(HttpError::ReadTimeout);
-        }
-
         let n = read(&mut tmp)?;
         if n == 0 {
             return Err(HttpError::InvalidResponse(
@@ -497,10 +485,6 @@ where
             ));
         }
         buf.extend_from_slice(&tmp[..n]);
-
-        if let Some(ref mut sleep_fn) = sleep_ms {
-            sleep_fn(1);
-        }
     };
 
     let (status, headers) = parse_response_head(&buf[..header_end])?;
@@ -515,33 +499,11 @@ where
         .as_deref()
         .is_some_and(|v| v.contains("chunked"))
     {
-        decode_chunked_body(
-            &mut remainder,
-            read,
-            read_timeout_ms,
-            max_body_bytes,
-            get_time_ms,
-            sleep_ms,
-        )?
+        decode_chunked_body(&mut remainder, read, max_body_bytes)?
     } else if let Some(len) = content_length {
-        read_fixed_body(
-            &mut remainder,
-            read,
-            len,
-            read_timeout_ms,
-            max_body_bytes,
-            get_time_ms,
-            sleep_ms,
-        )?
+        read_fixed_body(&mut remainder, read, len, max_body_bytes)?
     } else {
-        read_until_eof(
-            &mut remainder,
-            read,
-            read_timeout_ms,
-            max_body_bytes,
-            get_time_ms,
-            sleep_ms,
-        )?
+        read_until_eof(&mut remainder, read, max_body_bytes)?
     };
 
     Ok(HttpResponse {
@@ -596,29 +558,18 @@ fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a s
         .map(|(_, v)| v.as_str())
 }
 
-fn read_fixed_body<F, S>(
+fn read_fixed_body(
     remainder: &mut Vec<u8>,
     read: &mut impl FnMut(&mut [u8]) -> Result<usize, HttpError>,
     expected_len: usize,
-    read_timeout_ms: i64,
     max_body_bytes: usize,
-    get_time_ms: &mut F,
-    mut sleep_ms: Option<&mut S>,
-) -> Result<Vec<u8>, HttpError>
-where
-    F: FnMut() -> i64,
-    S: FnMut(i64),
-{
+) -> Result<Vec<u8>, HttpError> {
     if expected_len > max_body_bytes {
         return Err(HttpError::BodyTooLarge);
     }
 
-    let start_time = get_time_ms();
     let mut tmp = [0u8; 1024];
     while remainder.len() < expected_len {
-        if get_time_ms() - start_time > read_timeout_ms {
-            return Err(HttpError::ReadTimeout);
-        }
         let n = read(&mut tmp)?;
         if n == 0 {
             return Err(HttpError::InvalidResponse(
@@ -626,34 +577,20 @@ where
             ));
         }
         remainder.extend_from_slice(&tmp[..n]);
-        if let Some(ref mut sleep_fn) = sleep_ms {
-            sleep_fn(1);
-        }
     }
     remainder.truncate(expected_len);
     Ok(core::mem::take(remainder))
 }
 
-fn read_until_eof<F, S>(
+fn read_until_eof(
     remainder: &mut Vec<u8>,
     read: &mut impl FnMut(&mut [u8]) -> Result<usize, HttpError>,
-    read_timeout_ms: i64,
     max_body_bytes: usize,
-    get_time_ms: &mut F,
-    mut sleep_ms: Option<&mut S>,
-) -> Result<Vec<u8>, HttpError>
-where
-    F: FnMut() -> i64,
-    S: FnMut(i64),
-{
-    let start_time = get_time_ms();
+) -> Result<Vec<u8>, HttpError> {
     let mut tmp = [0u8; 1024];
     loop {
         if remainder.len() > max_body_bytes {
             return Err(HttpError::BodyTooLarge);
-        }
-        if get_time_ms() - start_time > read_timeout_ms {
-            return Err(HttpError::ReadTimeout);
         }
 
         let n = read(&mut tmp)?;
@@ -661,52 +598,25 @@ where
             break;
         }
         remainder.extend_from_slice(&tmp[..n]);
-        if let Some(ref mut sleep_fn) = sleep_ms {
-            sleep_fn(1);
-        }
     }
     Ok(core::mem::take(remainder))
 }
 
-fn decode_chunked_body<F, S>(
+fn decode_chunked_body(
     remainder: &mut Vec<u8>,
     read: &mut impl FnMut(&mut [u8]) -> Result<usize, HttpError>,
-    read_timeout_ms: i64,
     max_body_bytes: usize,
-    get_time_ms: &mut F,
-    mut sleep_ms: Option<&mut S>,
-) -> Result<Vec<u8>, HttpError>
-where
-    F: FnMut() -> i64,
-    S: FnMut(i64),
-{
-    let start_time = get_time_ms();
+) -> Result<Vec<u8>, HttpError> {
     let mut tmp = [0u8; 1024];
     let mut out: Vec<u8> = Vec::new();
 
     loop {
-        let line = read_line_crlf(
-            remainder,
-            read,
-            &mut tmp,
-            read_timeout_ms,
-            start_time,
-            get_time_ms,
-            sleep_ms.as_deref_mut(),
-        )?;
+        let line = read_line_crlf(remainder, read, &mut tmp)?;
         let size = parse_chunk_size(&line)?;
         if size == 0 {
             // Consume trailer headers (if any) until empty line.
             loop {
-                let trailer_line = read_line_crlf(
-                    remainder,
-                    read,
-                    &mut tmp,
-                    read_timeout_ms,
-                    start_time,
-                    get_time_ms,
-                    sleep_ms.as_deref_mut(),
-                )?;
+                let trailer_line = read_line_crlf(remainder, read, &mut tmp)?;
                 if trailer_line.is_empty() {
                     break;
                 }
@@ -715,9 +625,6 @@ where
         }
 
         while remainder.len() < size + 2 {
-            if get_time_ms() - start_time > read_timeout_ms {
-                return Err(HttpError::ReadTimeout);
-            }
             let n = read(&mut tmp)?;
             if n == 0 {
                 return Err(HttpError::InvalidResponse(
@@ -725,9 +632,6 @@ where
                 ));
             }
             remainder.extend_from_slice(&tmp[..n]);
-            if let Some(ref mut sleep_fn) = sleep_ms {
-                sleep_fn(1);
-            }
         }
 
         if out.len().saturating_add(size) > max_body_bytes {
@@ -742,19 +646,11 @@ where
     Ok(out)
 }
 
-fn read_line_crlf<F, S>(
+fn read_line_crlf(
     buffer: &mut Vec<u8>,
     read: &mut impl FnMut(&mut [u8]) -> Result<usize, HttpError>,
     tmp: &mut [u8; 1024],
-    read_timeout_ms: i64,
-    start_time: i64,
-    get_time_ms: &mut F,
-    mut sleep_ms: Option<&mut S>,
-) -> Result<String, HttpError>
-where
-    F: FnMut() -> i64,
-    S: FnMut(i64),
-{
+) -> Result<String, HttpError> {
     loop {
         if let Some(idx) = find_subslice(buffer, b"\r\n") {
             let line_bytes: Vec<u8> = buffer.drain(..idx).collect();
@@ -764,10 +660,6 @@ where
             return Ok(line.to_string());
         }
 
-        if get_time_ms() - start_time > read_timeout_ms {
-            return Err(HttpError::ReadTimeout);
-        }
-
         let n = read(tmp)?;
         if n == 0 {
             return Err(HttpError::InvalidResponse(
@@ -775,9 +667,6 @@ where
             ));
         }
         buffer.extend_from_slice(&tmp[..n]);
-        if let Some(ref mut sleep_fn) = sleep_ms {
-            sleep_fn(1);
-        }
     }
 }
 
