@@ -102,17 +102,12 @@ pub fn efi_main(
         configure_mmu();
     }
 
-    let _ = writeln!(st_boot_ref.stdout(), "moteOS: entering kernel_main");
-    {
-        let bs = st_boot_ref.boot_services();
-        let _ = bs.stall(2_000_000);
-    }
+    // Boot services are invalid past this point; jump straight to the kernel.
 
     // Call kernel_main - this never returns
     kernel_main(boot_info);
 
-    // If kernel_main returns, report and halt
-    let _ = writeln!(st_boot_ref.stdout(), "moteOS: kernel_main returned");
+    // If kernel_main returns, halt
     loop {
         unsafe {
             core::arch::asm!("wfi");
