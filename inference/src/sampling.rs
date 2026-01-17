@@ -1,3 +1,5 @@
+#![no_std]
+
 use alloc::vec::Vec;
 use crate::ops::{softmax, xorshift64};
 
