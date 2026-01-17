@@ -3,6 +3,7 @@
 // Shared crate for moteOS
 // Common types, utilities, and data structures shared across crates
 
+pub mod allocator;
 pub mod boot_info;
 pub mod framebuffer;
 pub mod memory;
@@ -132,6 +133,7 @@ pub enum ColorError {
 }
 
 // Re-export shared boot types
+pub use allocator::{init_heap, is_heap_initialized};
 pub use boot_info::BootInfo;
 pub use framebuffer::{FramebufferInfo, PixelFormat};
 pub use memory::{MemoryKind, MemoryMap, MemoryRegion};
