@@ -37,10 +37,10 @@ if ! rustup target list --installed | grep -q "aarch64-unknown-uefi"; then
     rustup target add aarch64-unknown-uefi
 fi
 
-# Build kernel for AArch64 UEFI
-echo -e "${GREEN}Building kernel for UEFI (aarch64)...${NC}"
+# Build bootloader for AArch64 UEFI (minimal kernel linked)
+echo -e "${GREEN}Building bootloader for UEFI (aarch64)...${NC}"
 cd "$PROJECT_ROOT"
-cargo build --release --target aarch64-unknown-uefi
+cargo build --release --target aarch64-unknown-uefi -p boot
 
 # Find EFI binary (could be moteos.efi, boot.efi, or kernel.efi)
 EFI_BINARY=""

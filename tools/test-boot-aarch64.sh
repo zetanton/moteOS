@@ -92,6 +92,14 @@ QEMU_ARGS=(
     -no-reboot
 )
 
+# On Apple Silicon, force TCG to avoid HVF issues
+HOST_ARCH="$(uname -m)"
+if [ "$HOST_ARCH" = "arm64" ] || [ "$HOST_ARCH" = "aarch64" ]; then
+    QEMU_ARGS+=(
+        -accel tcg
+    )
+fi
+
 # Add UEFI firmware if available
 if [ -n "$QEMU_EFI_CODE" ] && [ -f "$QEMU_EFI_CODE" ]; then
     QEMU_ARGS+=(
@@ -111,21 +119,42 @@ echo -e "${YELLOW}The system will boot and you should see kernel output on seria
 echo -e "${YELLOW}Press Ctrl+C to stop the test${NC}"
 echo ""
 
-# Run QEMU with timeout (30 seconds)
-timeout 30s "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-aarch64-test.log || {
-    EXIT_CODE=$?
-    if [ $EXIT_CODE -eq 124 ]; then
-        echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
-        exit 0
-    else
-        echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
-        echo -e "${YELLOW}Check /tmp/moteos-boot-aarch64-test.log for details${NC}"
-        exit $EXIT_CODE
-    fi
-}
+# Detect timeout command (macOS may use gtimeout from coreutils)
+TIMEOUT_CMD=""
+if command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+fi
+
+# Run QEMU with timeout (30 seconds) if available, otherwise run without timeout
+if [ -n "$TIMEOUT_CMD" ]; then
+    "$TIMEOUT_CMD" 30s "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-aarch64-test.log || {
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
+            exit 0
+        else
+            echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
+            echo -e "${YELLOW}Check /tmp/moteos-boot-aarch64-test.log for details${NC}"
+            exit $EXIT_CODE
+        fi
+    }
+else
+    echo -e "${YELLOW}Note: timeout command not found, running QEMU for 30 seconds${NC}"
+    "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-aarch64-test.log &
+    QEMU_PID=$!
+    sleep 2
+    (sleep 28; kill $QEMU_PID 2>/dev/null || true) &
+    KILL_PID=$!
+    wait $QEMU_PID 2>/dev/null || true
+    kill $KILL_PID 2>/dev/null || true
+    wait $KILL_PID 2>/dev/null || true
+    echo -e "${GREEN}✓ Boot test completed (30 seconds elapsed)${NC}"
+fi
 
 # Check log for successful boot indicators
-if grep -q "kernel_main\|moteOS\|Boot successful\|efi_main" /tmp/moteos-boot-aarch64-test.log 2>/dev/null; then
+if grep -q "kernel_main\|moteOS\|Boot successful\|efi_main\|kernel_main reached" /tmp/moteos-boot-aarch64-test.log 2>/dev/null; then
     echo -e "${GREEN}✓ Boot test passed - kernel reached main function${NC}"
     exit 0
 else

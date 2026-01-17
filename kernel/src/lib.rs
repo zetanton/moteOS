@@ -40,6 +40,7 @@ pub mod init;
 pub mod input;
 #[cfg(not(feature = "uefi-minimal"))]
 pub mod screen;
+pub mod serial;
 
 // Global kernel state
 #[cfg(not(feature = "uefi-minimal"))]
@@ -117,6 +118,8 @@ impl KernelState {
 #[cfg(feature = "uefi-minimal")]
 #[no_mangle]
 pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
+    serial::println("moteOS: kernel_main reached (minimal)");
+
     let fb = boot_info.framebuffer;
     let bounds = Rect::new(0, 0, fb.width, fb.height);
     fb.fill_rectangle_safe(bounds, Color::rgb(16, 16, 16));

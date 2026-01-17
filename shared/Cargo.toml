@@ -7,3 +7,4 @@ edition.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+spin = { workspace = true }

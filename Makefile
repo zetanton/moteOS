@@ -1,7 +1,7 @@
 # Makefile for moteOS ISO generation and QEMU testing
 # See docs/TECHNICAL_SPECIFICATIONS.md Section 3.8.8-9
 
-.PHONY: help iso-uefi iso-bios iso-aarch64 iso-all test-boot test-boot-aarch64 test-network test-api test-build-aarch64 test-all clean
+.PHONY: help iso-uefi iso-bios iso-aarch64 iso-all test-boot test-boot-aarch64 test-network test-api test-build-aarch64 test-all clean run-qemu-uefi run-qemu-aarch64 run-qemu-bios
 
 # Default target
 help:
@@ -90,8 +90,8 @@ run-qemu-uefi: iso-uefi
 
 run-qemu-aarch64: iso-aarch64
 	@echo "Starting QEMU with UEFI ISO (aarch64)..."
-	@chmod +x tools/test-boot-aarch64.sh
-	@./tools/test-boot-aarch64.sh
+	@chmod +x run-qemu-aarch64.sh
+	@./run-qemu-aarch64.sh
 
 run-qemu-bios: iso-bios
 	@echo "Starting QEMU with BIOS ISO..."

@@ -88,7 +88,7 @@ pub extern "efiapi" fn efi_main(
     let rsdp_addr = None; // TODO: Locate ACPI RSDP or Device Tree
 
     // Create BootInfo
-    let _boot_info = BootInfo::new(
+    let boot_info = BootInfo::new(
         framebuffer_info,
         memory_map,
         rsdp_addr,
