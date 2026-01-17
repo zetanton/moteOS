@@ -32,10 +32,21 @@ pub fn handle_input() {
 /// * `Some(Key)` - If a key was pressed
 /// * `None` - If no key is available
 fn read_keyboard() -> Option<Key> {
-    // TODO: Implement keyboard driver integration
-    // This will interface with PS/2 or USB HID keyboard drivers
-    // For now, return None (no input)
-    None
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Poll PS/2 keyboard for any pending scancodes
+        // (in case interrupts aren't working or we're in polling mode)
+        ps2::poll();
+        
+        // Read a key from the PS/2 keyboard buffer
+        ps2::read_key()
+    }
+    
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        // Other architectures would use different keyboard drivers
+        None
+    }
 }
 
 /// Convert config::Key to tui::types::Key

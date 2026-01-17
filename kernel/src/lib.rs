@@ -44,6 +44,9 @@ pub mod init;
 #[cfg(not(feature = "uefi-minimal"))]
 pub mod input;
 #[cfg(not(feature = "uefi-minimal"))]
+#[cfg(target_arch = "x86_64")]
+pub mod ps2;
+#[cfg(not(feature = "uefi-minimal"))]
 pub mod screen;
 pub mod serial;
 
@@ -148,6 +151,10 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     serial::println("moteOS: kernel_main reached (full)");
     // Initialize heap allocator
     init::init_heap(boot_info.heap_start, boot_info.heap_size);
+
+    // Initialize PS/2 keyboard driver
+    #[cfg(target_arch = "x86_64")]
+    ps2::init();
 
     // Force a visible test pattern to confirm framebuffer writes in full mode.
     {
