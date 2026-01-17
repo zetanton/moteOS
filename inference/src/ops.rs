@@ -1,3 +1,6 @@
+#![no_std]
+
+use alloc::vec::Vec;
 use micromath::F32Ext;
 use crate::tensor::{BlockQ4K, QK_K};
 
@@ -64,11 +67,12 @@ pub fn layer_norm(out: &mut [f32], x: &[f32], weight: &[f32], bias: &[f32], eps:
 }
 
 /// RoPE (Rotary Positional Embedding)
-pub fn rope(x: &mut [f32], pos: usize, head_dim: usize, n_heads: usize, theta: f32) {
+pub fn rope(x: &mut [f32], pos: usize, head_dim: usize, freq_base: f32) {
+    let n_heads = x.len() / head_dim;
     for h in 0..n_heads {
         let head_x = &mut x[h * head_dim..(h + 1) * head_dim];
-        for i in (0..head_dim / 2).step_by(1) {
-            let freq = 1.0 / theta.powf((2 * i) as f32 / head_dim as f32);
+        for i in 0..head_dim / 2 {
+            let freq = 1.0 / freq_base.powf((2 * i) as f32 / head_dim as f32);
             let val = pos as f32 * freq;
             let f_cos = val.cos();
             let f_sin = val.sin();
@@ -82,43 +86,76 @@ pub fn rope(x: &mut [f32], pos: usize, head_dim: usize, n_heads: usize, theta: f
     }
 }
 
-/// Matrix multiplication (F32) - simple vector-matrix multiplication
-/// out = A * b
-/// A: (m, k), b: (k), out: (m)
-pub fn matmul_f32(out: &mut [f32], a: &[f32], b: &[f32], m: usize, k: usize) {
-    for i in 0..m {
-        let row = &a[i * k..(i + 1) * k];
-        let mut sum = 0.0;
-        for j in 0..k {
-            sum += row[j] * b[j];
-        }
-        out[i] = sum;
-    }
+/// Element-wise addition
+pub fn add(a: &[f32], b: &[f32]) -> Vec<f32> {
+    a.iter().zip(b.iter()).map(|(x, y)| x + y).collect()
 }
 
-/// Matrix multiplication (Q4_K) - simple vector-matrix multiplication
-/// out = A * b
-/// A: (m, k) quantized, b: (k) f32, out: (m) f32
-pub fn matmul_q4k(out: &mut [f32], a: &[u8], b: &[f32], m: usize, k: usize) {
+/// Element-wise multiplication
+pub fn mul(a: &[f32], b: &[f32]) -> Vec<f32> {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).collect()
+}
+
+/// Matrix multiplication (F32)
+/// out = A * B
+/// A: (m, k), B: (k, n), out: (m, n)
+pub fn matmul_f32(a: &[f32], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(m * n);
+    for i in 0..m {
+        for j in 0..n {
+            let mut sum = 0.0;
+            for l in 0..k {
+                sum += a[i * k + l] * b[l * n + j];
+            }
+            out.push(sum);
+        }
+    }
+    out
+}
+
+/// Matrix multiplication (Q4_K)
+/// A: (m, k) quantized, B: (k, n) f32, out: (m, n) f32
+pub fn matmul_q4k(a: &[u8], b: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
     let blocks_per_row = k / QK_K;
     let block_size = core::mem::size_of::<BlockQ4K>();
+    let mut out = Vec::with_capacity(m * n);
     
     for i in 0..m {
-        let mut row_sum = 0.0;
-        let row_start = i * blocks_per_row * block_size;
-        
-        for j in 0..blocks_per_row {
-            let block_offset = row_start + j * block_size;
-            let block = unsafe { &*(a.as_ptr().add(block_offset) as *const BlockQ4K) };
-            let b_ptr = &b[j * QK_K..];
+        for j in 0..n {
+            let mut row_sum = 0.0;
+            let row_start = i * blocks_per_row * block_size;
             
-            row_sum += dot_product_q4k_f32(block, b_ptr);
+            for l in 0..blocks_per_row {
+                let block_offset = row_start + l * block_size;
+                let block = unsafe { &*(a.as_ptr().add(block_offset) as *const BlockQ4K) };
+                
+                // Extract 32 elements at a time
+                for group in 0..8 {
+                    let group_scale = get_scale(block, group);
+                    let group_min = get_min(block, group);
+                    let d = block.d * group_scale;
+                    let m = block.dmin * group_min;
+                    
+                    for r in 0..32 {
+                        let idx = group * 32 + r;
+                        let q = if idx % 2 == 0 {
+                            block.qs[idx / 2] & 0x0F
+                        } else {
+                            block.qs[idx / 2] >> 4
+                        };
+                        
+                        let val = (q as f32) * d - m;
+                        row_sum += val * b[(l * QK_K + idx) * n + j];
+                    }
+                }
+            }
+            out.push(row_sum);
         }
-        out[i] = row_sum;
     }
+    out
 }
 
-/// Dot product of a Q4_K block and an F32 vector
+/// Dot product of a Q4_K block and an F32 vector (for vector-matrix mult)
 fn dot_product_q4k_f32(block: &BlockQ4K, b: &[f32]) -> f32 {
     let mut sum = 0.0;
     
@@ -177,6 +214,7 @@ fn get_min(block: &BlockQ4K, i: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate alloc;
 
     #[test]
     fn test_silu() {
@@ -215,9 +253,19 @@ mod tests {
     fn test_matmul_f32() {
         let a = [1.0, 2.0, 3.0, 4.0]; // 2x2
         let b = [1.0, 2.0]; // 2x1
-        let mut out = [0.0; 2];
-        matmul_f32(&mut out, &a, &b, 2, 2);
+        let out = matmul_f32(&a, &b, 2, 1, 2);
+        assert_eq!(out.len(), 2);
         assert_eq!(out[0], 5.0);
         assert_eq!(out[1], 11.0);
+    }
+
+    #[test]
+    fn test_add_mul() {
+        let a = [1.0, 2.0];
+        let b = [3.0, 4.0];
+        let c = add(&a, &b);
+        assert_eq!(c, [4.0, 6.0]);
+        let d = mul(&a, &b);
+        assert_eq!(d, [3.0, 8.0]);
     }
 }
