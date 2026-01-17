@@ -63,6 +63,18 @@ mkdir -p "$ISO_DIR/EFI/BOOT"
 echo -e "${GREEN}Copying EFI binary...${NC}"
 cp "$EFI_BINARY" "$ISO_DIR/EFI/BOOT/BOOTX64.EFI"
 
+# Add startup.nsh to auto-launch the EFI binary in UEFI shell
+cat > "$ISO_DIR/startup.nsh" << 'EOF'
+echo -off
+map -r
+fs0:
+\EFI\BOOT\BOOTX64.EFI
+fs1:
+\EFI\BOOT\BOOTX64.EFI
+fs2:
+\EFI\BOOT\BOOTX64.EFI
+EOF
+
 # Create ISO
 echo -e "${GREEN}Creating ISO image...${NC}"
 xorriso -as mkisofs \

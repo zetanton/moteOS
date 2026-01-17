@@ -1,7 +1,7 @@
 // UEFI boot implementation for x86_64 architecture
 // Handles UEFI boot services, Graphics Output Protocol (GOP), and memory map
 
-use crate::{BootInfo, FramebufferInfo, MemoryKind, MemoryMap, MemoryRegion, PixelFormat};
+use crate::{BootInfo, Color, FramebufferInfo, MemoryKind, MemoryMap, MemoryRegion, PixelFormat, Rect};
 use kernel::kernel_main;
 use core::fmt::Write;
 use uefi::prelude::*;
@@ -17,54 +17,84 @@ use uefi::table::Boot;
 /// This is the main entry point called by UEFI firmware.
 /// It initializes UEFI services, acquires the framebuffer, gets the memory map,
 /// exits boot services, and then calls kernel_main().
-pub extern "efiapi" fn efi_main(
+pub fn efi_main(
     _image_handle: Handle,
-    system_table: *mut uefi::table::SystemTable<uefi::table::Runtime>,
+    st_boot_ref: &mut uefi::table::SystemTable<Boot>,
 ) -> uefi::Status {
-    // Safety: system_table is provided by UEFI firmware and is valid
-    // Convert from Runtime view to Boot view to access boot services
-    let st_boot_ref = unsafe {
-        // Cast the raw pointer to Boot view - this is safe because at entry time
-        // the system table is in boot services mode
-        &mut *(system_table as *mut uefi::table::SystemTable<Boot>)
-    };
-    
+    // Avoid direct serial I/O in UEFI (can fault on some firmware/QEMU setups)
     // Clone the SystemTable so we can move it into exit_boot_services
-    // This is safe because the system table pointer is valid and stable
     let st_boot = unsafe { st_boot_ref.unsafe_clone() };
+    let _ = st_boot_ref.stdout().reset(false);
     let _ = st_boot_ref.stdout().clear();
-    let _ = writeln!(st_boot_ref.stdout(), "moteOS: booting kernel...");
-    let bs = st_boot_ref.boot_services();
-
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: bootloader started");
+    {
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(2_000_000);
+    }
     // Acquire framebuffer via Graphics Output Protocol
-    let framebuffer_info = match acquire_framebuffer(bs) {
-        Ok(info) => info,
-        Err(_) => {
-            // If we can't get framebuffer, create a dummy one
-            // This should not happen in normal operation
-            FramebufferInfo::new(core::ptr::null_mut(), 0, 0, 0, PixelFormat::Bgra)
+    let mut framebuffer_failed = false;
+    let framebuffer_info = {
+        let bs = st_boot_ref.boot_services();
+        match acquire_framebuffer(bs) {
+            Ok(info) => info,
+            Err(_) => {
+                framebuffer_failed = true;
+                // If we can't get framebuffer, create a dummy one
+                // This should not happen in normal operation
+                FramebufferInfo::new(core::ptr::null_mut(), 0, 0, 0, PixelFormat::Bgra)
+            }
         }
     };
+    if framebuffer_failed {
+        let _ = writeln!(st_boot_ref.stdout(), "moteOS: framebuffer not found");
+    } else {
+        let _ = writeln!(st_boot_ref.stdout(), "moteOS: framebuffer ok");
+    }
+    {
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(1_000_000);
+    }
+
+    // Quick visual confirmation that the bootloader is running
+    if framebuffer_info.width > 0 && framebuffer_info.height > 0 {
+        let bounds = Rect::new(0, 0, framebuffer_info.width, framebuffer_info.height);
+        framebuffer_info.fill_rectangle_safe(bounds, Color::rgb(0, 0, 255));
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(1_000_000);
+    }
 
     // Get memory map (key is not needed in uefi 0.27 - exit_boot_services handles it)
-    let (memory_map, _memory_map_key) = match get_memory_map(bs) {
-        Ok(map) => map,
-        Err(_) => {
-            return uefi::Status::ABORTED;
+    let (memory_map, _memory_map_key) = {
+        let bs = st_boot_ref.boot_services();
+        match get_memory_map(bs) {
+            Ok(map) => map,
+            Err(_) => {
+                let _ = writeln!(st_boot_ref.stdout(), "moteOS: memory map failed");
+                return uefi::Status::ABORTED;
+            }
         }
     };
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: memory map ok");
+    {
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(1_000_000);
+    }
 
     // Find largest usable memory region for heap
-    let heap_region = memory_map
+    let (heap_start, heap_size) = if let Some(heap_region) = memory_map
         .regions
         .iter()
         .filter(|r| r.kind == MemoryKind::Usable)
         .max_by_key(|r| r.len)
-        .expect("No usable memory region found");
-
-    // Reserve at least 64MB for heap
-    let heap_size = (64 * 1024 * 1024).min(heap_region.len);
-    let heap_start = heap_region.start;
+    {
+        // Reserve at least 64MB for heap
+        (heap_region.start, (64 * 1024 * 1024).min(heap_region.len))
+    } else {
+        let _ = writeln!(st_boot_ref.stdout(), "moteOS: no usable memory region");
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(1_000_000);
+        (0, 0)
+    };
 
     // Exit boot services (required before using memory allocator)
     // This invalidates the boot services pointer, so we must do this last
@@ -72,6 +102,11 @@ pub extern "efiapi" fn efi_main(
     // It takes MemoryType and returns (SystemTable<Runtime>, MemoryMap<'static>)
     // It consumes st_boot and returns a Runtime view
     // We need to move st_boot here, so we can't use it after this point
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: exiting boot services");
+    {
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(1_000_000);
+    }
     let (_st_runtime, _final_memory_map) = st_boot.exit_boot_services(
         MemoryType::LOADER_DATA
     );
@@ -95,6 +130,12 @@ pub extern "efiapi" fn efi_main(
         heap_start,
         heap_size,
     );
+
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: entering kernel_main");
+    {
+        let bs = st_boot_ref.boot_services();
+        let _ = bs.stall(2_000_000);
+    }
 
     // Call kernel_main - this never returns
     kernel_main(boot_info);
@@ -154,6 +195,17 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
 
 /// Get memory map from UEFI
 fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::Status> {
+    const MAX_MEMORY_REGIONS: usize = 256;
+    const PAGE_SIZE: usize = 4096;
+
+    // Static storage for memory regions
+    static mut REGIONS: [MemoryRegion; MAX_MEMORY_REGIONS] = [MemoryRegion {
+        start: 0,
+        len: 0,
+        kind: MemoryKind::Reserved,
+    }; MAX_MEMORY_REGIONS];
+    static mut REGION_COUNT: usize = 0;
+
     // Allocate buffer for memory map
     // UEFI requires a buffer that's large enough - we'll use a reasonable size
     let mut buffer = [0u8; 32768];
@@ -164,13 +216,38 @@ fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::
     
     let key = mmap.key();
 
-    // Parse memory descriptors
-    // Note: This is a simplified implementation
-    // In a real implementation, we'd properly parse all descriptors
-    // Create empty memory map for now
-    static EMPTY_REGIONS: [MemoryRegion; 0] = [];
-    let memory_regions: &'static [MemoryRegion] = &EMPTY_REGIONS;
+    // Parse memory descriptors into our MemoryRegion array
+    let mut count = 0usize;
+    for desc in mmap.entries() {
+        if count >= MAX_MEMORY_REGIONS {
+            break;
+        }
+        let kind = match desc.ty {
+            MemoryType::CONVENTIONAL
+            | MemoryType::LOADER_CODE
+            | MemoryType::LOADER_DATA
+            | MemoryType::BOOT_SERVICES_CODE
+            | MemoryType::BOOT_SERVICES_DATA => MemoryKind::Usable,
+            MemoryType::ACPI_RECLAIM => MemoryKind::AcpiReclaimable,
+            MemoryType::ACPI_NON_VOLATILE => MemoryKind::AcpiNvs,
+            _ => MemoryKind::Reserved,
+        };
 
+        unsafe {
+            REGIONS[count] = MemoryRegion {
+                start: desc.phys_start as usize,
+                len: (desc.page_count as usize) * PAGE_SIZE,
+                kind,
+            };
+        }
+        count += 1;
+    }
+
+    unsafe {
+        REGION_COUNT = count;
+    }
+
+    let memory_regions = unsafe { &REGIONS[..REGION_COUNT] };
     let memory_map = MemoryMap::new(memory_regions);
 
     Ok((memory_map, key))

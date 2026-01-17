@@ -73,6 +73,18 @@ mkdir -p "$RPI_DIR"
 echo -e "${GREEN}Copying EFI binary...${NC}"
 cp "$EFI_BINARY" "$ISO_DIR/EFI/BOOT/BOOTAA64.EFI"
 
+# Add startup.nsh to auto-launch the EFI binary in UEFI shell
+cat > "$ISO_DIR/startup.nsh" << 'EOF'
+echo -off
+map -r
+fs0:
+\EFI\BOOT\BOOTAA64.EFI
+fs1:
+\EFI\BOOT\BOOTAA64.EFI
+fs2:
+\EFI\BOOT\BOOTAA64.EFI
+EOF
+
 # Create Raspberry Pi specific configuration
 echo -e "${GREEN}Creating Raspberry Pi configuration...${NC}"
 cat > "$RPI_DIR/config.txt" << 'EOF'

@@ -122,7 +122,8 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
 
     let fb = boot_info.framebuffer;
     let bounds = Rect::new(0, 0, fb.width, fb.height);
-    fb.fill_rectangle_safe(bounds, Color::rgb(16, 16, 16));
+    // Bright color to confirm kernel execution
+    fb.fill_rectangle_safe(bounds, Color::rgb(255, 0, 255));
 
     loop {
         #[cfg(target_arch = "x86_64")]

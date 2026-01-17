@@ -130,16 +130,16 @@ fi
 # Run QEMU with timeout (30 seconds) if available, otherwise run without timeout
 if [ -n "$TIMEOUT_CMD" ]; then
     "$TIMEOUT_CMD" 30s "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-aarch64-test.log || {
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 124 ]; then
-            echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
-            exit 0
-        else
-            echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
-            echo -e "${YELLOW}Check /tmp/moteos-boot-aarch64-test.log for details${NC}"
-            exit $EXIT_CODE
-        fi
-    }
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -eq 124 ]; then
+        echo -e "${GREEN}✓ Boot test completed (timeout reached - system is running)${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Boot test failed (exit code: $EXIT_CODE)${NC}"
+        echo -e "${YELLOW}Check /tmp/moteos-boot-aarch64-test.log for details${NC}"
+        exit $EXIT_CODE
+    fi
+}
 else
     echo -e "${YELLOW}Note: timeout command not found, running QEMU for 30 seconds${NC}"
     "$QEMU_CMD" "${QEMU_ARGS[@]}" 2>&1 | tee /tmp/moteos-boot-aarch64-test.log &

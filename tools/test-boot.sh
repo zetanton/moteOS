@@ -7,8 +7,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ISO_FILE="$PROJECT_ROOT/moteos-x64-uefi.iso"
+ISO_DIR="$PROJECT_ROOT/iso"
 OVMF_CODE="/usr/share/OVMF/OVMF_CODE.fd"
 OVMF_VARS="/usr/share/OVMF/OVMF_VARS.fd"
+OVMF_CODE_X64="/usr/share/qemu/edk2-x86_64-code.fd"
+OVMF_VARS_X64="/usr/share/qemu/edk2-x86_64-vars.fd"
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,7 +41,10 @@ fi
 # Check for OVMF (UEFI firmware)
 if [ ! -f "$OVMF_CODE" ]; then
     # Try alternative locations
-    if [ -f "/usr/share/qemu/OVMF_CODE.fd" ]; then
+    if [ -f "$OVMF_CODE_X64" ]; then
+        OVMF_CODE="$OVMF_CODE_X64"
+        OVMF_VARS="$OVMF_VARS_X64"
+    elif [ -f "/usr/share/qemu/OVMF_CODE.fd" ]; then
         OVMF_CODE="/usr/share/qemu/OVMF_CODE.fd"
         OVMF_VARS="/usr/share/qemu/OVMF_VARS.fd"
     elif [ -f "$PROJECT_ROOT/ovmf/OVMF_CODE.fd" ]; then
@@ -73,7 +79,9 @@ QEMU_ARGS=(
     -cpu qemu64
     -m 1G
     -drive "file=$ISO_FILE,format=raw,media=cdrom,id=cdrom0,if=none"
-    -device "ide-cd,drive=cdrom0,bootindex=1"
+    -device "ide-cd,drive=cdrom0,bootindex=2"
+    -drive "file=fat:rw:$ISO_DIR,format=raw,if=none,id=fs0"
+    -device "virtio-blk-pci,drive=fs0,bootindex=1"
     -netdev "user,id=net0"
     -device "virtio-net,netdev=net0"
     -serial stdio
