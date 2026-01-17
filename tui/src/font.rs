@@ -1,12 +1,8 @@
 // tui/src/font.rs
 
-pub type Result<T> = core::result::Result<T, Error>;
+use shared::FontError;
 
-#[derive(Debug)]
-pub enum Error {
-    NotAPsfFont,
-    InvalidMagic,
-}
+pub type Result<T> = core::result::Result<T, FontError>;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -35,8 +31,11 @@ pub enum Version {
 }
 
 pub struct Font {
-    pub header: Version,
     pub glyphs: &'static [u8],
+    pub width: usize,
+    pub height: usize,
+    pub glyph_count: usize,
+    pub header: Version,
 }
 
 impl Font {
@@ -45,38 +44,44 @@ impl Font {
     /// # Safety
     ///
     /// The byte slice must be valid and static.
-    pub unsafe fn load(bytes: &'static [u8]) -> Result<Font> {
-        if bytes.len() < 2 {
-            return Err(Error::NotAPsfFont);
+    pub unsafe fn load_psf(data: &'static [u8]) -> Result<Self> {
+        if data.len() < 2 {
+            return Err(FontError::NotAPsfFont);
         }
-        let magic1 = [bytes[0], bytes[1]];
+        let magic1 = [data[0], data[1]];
         if magic1 == [0x36, 0x04] {
-            let header = &*(bytes.as_ptr() as *const Pfs1Header);
-            let glyphs = &bytes[core::mem::size_of::<Pfs1Header>()..];
+            let header = &*(data.as_ptr() as *const Pfs1Header);
+            let glyphs = &data[core::mem::size_of::<Pfs1Header>()..];
             Ok(Font {
-                header: Version::V1(*header),
                 glyphs,
+                width: 8,
+                height: header.char_size as usize,
+                glyph_count: 256, // PSF1 usually has 256 or 512
+                header: Version::V1(*header),
             })
         } else {
-            if bytes.len() < 4 {
-                return Err(Error::NotAPsfFont);
+            if data.len() < 4 {
+                return Err(FontError::NotAPsfFont);
             }
-            let magic2 = [bytes[0], bytes[1], bytes[2], bytes[3]];
+            let magic2 = [data[0], data[1], data[2], data[3]];
             if magic2 == [0x72, 0xb5, 0x4a, 0x86] {
-                let header = &*(bytes.as_ptr() as *const Pfs2Header);
-                let glyphs = &bytes[header.header_size as usize..];
+                let header = &*(data.as_ptr() as *const Pfs2Header);
+                let glyphs = &data[header.header_size as usize..];
 
                 Ok(Font {
-                    header: Version::V2(*header),
                     glyphs,
+                    width: header.width as usize,
+                    height: header.height as usize,
+                    glyph_count: header.length as usize,
+                    header: Version::V2(*header),
                 })
             } else {
-                Err(Error::InvalidMagic)
+                Err(FontError::InvalidMagic)
             }
         }
     }
 
-    pub fn glyph(&self, c: char) -> Option<&'static [u8]> {
+    pub fn glyph_data(&self, c: char) -> Option<&'static [u8]> {
         match self.header {
             Version::V1(header) => {
                 let glyph_index = c as u32;
@@ -106,5 +111,16 @@ impl Font {
                 Some(&self.glyphs[glyph_start as usize..glyph_end as usize])
             }
         }
+    }
+
+    /// Renders a glyph into the provided buffer.
+    /// Returns a slice of the buffer containing the glyph data if successful.
+    pub fn render_glyph<'a>(&self, ch: char, buffer: &'a mut [u8]) -> Option<&'a [u8]> {
+        let glyph = self.glyph_data(ch)?;
+        if buffer.len() < glyph.len() {
+            return None;
+        }
+        buffer[..glyph.len()].copy_from_slice(glyph);
+        Some(&buffer[..glyph.len()])
     }
 }

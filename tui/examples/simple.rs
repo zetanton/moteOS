@@ -1,5 +1,5 @@
 //! examples/simple.rs
-use tui::{get_default_font, Color, Framebuffer};
+use tui::{get_default_font, Color, Framebuffer, draw_text};
 use minifb::{Key, Window, WindowOptions};
 
 const WIDTH: usize = 800;
@@ -10,8 +10,8 @@ fn main() {
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
     let mut fb = Framebuffer::new(WIDTH, HEIGHT, &mut buffer);
 
-    fb.draw_text("Hello, moteOS TUI!", 10, 10, &font, Color::WHITE);
-    fb.draw_text("Colored text rendering test.", 10, 30, &font, Color(0x00FF00FF)); // Purple-ish
+    draw_text(&mut fb, &font, 10, 10, "Hello, moteOS TUI!", Color::white());
+    draw_text(&mut fb, &font, 10, 30, "Colored text rendering test.", Color::new(255, 0, 255, 255)); // Magenta
 
     let mut window = Window::new(
         "TUI Font Example - Press ESC to exit",
