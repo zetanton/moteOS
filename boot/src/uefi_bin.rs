@@ -23,7 +23,7 @@ fn efi_main(
 ) -> Status {
     #[cfg(target_arch = "x86_64")]
     return x86_64::efi_main(image_handle, &mut system_table);
-
+    
     #[cfg(target_arch = "aarch64")]
     return aarch64::efi_main(image_handle, &mut system_table);
 }

@@ -54,14 +54,19 @@ impl Font {
         }
         let magic1 = [data[0], data[1]];
         if magic1 == [0x36, 0x04] {
-            let header = &*(data.as_ptr() as *const Pfs1Header);
+            let header = core::ptr::read_unaligned(data.as_ptr() as *const Pfs1Header);
             let glyphs = &data[core::mem::size_of::<Pfs1Header>()..];
+            let glyph_count = if header.mode & 0x01 == 0x01 { 512 } else { 256 };
+            let glyph_bytes = glyph_count * header.char_size as usize;
+            if glyphs.len() < glyph_bytes {
+                return Err(FontError::BufferTooSmall);
+            }
             Ok(Font {
                 glyphs,
                 width: 8,
                 height: header.char_size as usize,
-                glyph_count: 256, // PSF1 usually has 256 or 512
-                header: Version::V1(*header),
+                glyph_count,
+                header: Version::V1(header),
             })
         } else {
             if data.len() < 4 {
@@ -69,15 +74,22 @@ impl Font {
             }
             let magic2 = [data[0], data[1], data[2], data[3]];
             if magic2 == [0x72, 0xb5, 0x4a, 0x86] {
-                let header = &*(data.as_ptr() as *const Pfs2Header);
+                let header = core::ptr::read_unaligned(data.as_ptr() as *const Pfs2Header);
+                if data.len() < header.header_size as usize {
+                    return Err(FontError::BufferTooSmall);
+                }
                 let glyphs = &data[header.header_size as usize..];
+                let glyph_bytes = header.length.saturating_mul(header.char_size);
+                if glyphs.len() < glyph_bytes as usize {
+                    return Err(FontError::BufferTooSmall);
+                }
 
                 Ok(Font {
                     glyphs,
                     width: header.width as usize,
                     height: header.height as usize,
                     glyph_count: header.length as usize,
-                    header: Version::V2(*header),
+                    header: Version::V2(header),
                 })
             } else {
                 Err(FontError::InvalidMagic)

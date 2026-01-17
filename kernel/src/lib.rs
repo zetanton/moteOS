@@ -24,6 +24,8 @@ use core::panic::PanicInfo;
 #[cfg(not(feature = "uefi-minimal"))]
 use llm::{GenerationConfig, LlmProvider, Message, Role};
 #[cfg(not(feature = "uefi-minimal"))]
+use llm::{CompletionResult, LlmError, ModelInfo};
+#[cfg(not(feature = "uefi-minimal"))]
 use network::{poll_network_stack, NetworkStack};
 #[cfg(not(feature = "uefi-minimal"))]
 use shared::{BootInfo, Color, Rect};
@@ -36,6 +38,42 @@ use tui::font::Font;
 
 #[cfg(not(feature = "uefi-minimal"))]
 const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../assets/ter-u16n.psf");
+
+#[cfg(not(feature = "uefi-minimal"))]
+struct NullProvider;
+
+#[cfg(not(feature = "uefi-minimal"))]
+impl LlmProvider for NullProvider {
+    fn name(&self) -> &str {
+        "offline"
+    }
+
+    fn models(&self) -> &[ModelInfo] {
+        &[]
+    }
+
+    fn default_model(&self) -> &str {
+        "none"
+    }
+
+    fn complete(
+        &mut self,
+        _messages: &[Message],
+        _model: &str,
+        _config: &GenerationConfig,
+        _on_token: &mut dyn FnMut(&str),
+    ) -> Result<CompletionResult, LlmError> {
+        Err(LlmError::Other(String::from(
+            "LLM provider not configured",
+        )))
+    }
+
+    fn validate_api_key(&self) -> Result<(), LlmError> {
+        Err(LlmError::Other(String::from(
+            "LLM provider not configured",
+        )))
+    }
+}
 
 #[cfg(not(feature = "uefi-minimal"))]
 pub mod event_loop;
@@ -158,20 +196,6 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     #[cfg(target_arch = "x86_64")]
     ps2::init();
 
-    // Force a visible test pattern to confirm framebuffer writes in full mode.
-    {
-        let fb = boot_info.framebuffer;
-        let mid_x = fb.width / 2;
-        let mid_y = fb.height / 2;
-        fb.fill_rectangle_safe(Rect::new(0, 0, mid_x, mid_y), Color::rgb(255, 0, 0));
-        fb.fill_rectangle_safe(Rect::new(mid_x, 0, fb.width - mid_x, mid_y), Color::rgb(0, 255, 0));
-        fb.fill_rectangle_safe(Rect::new(0, mid_y, mid_x, fb.height - mid_y), Color::rgb(0, 0, 255));
-        fb.fill_rectangle_safe(
-            Rect::new(mid_x, mid_y, fb.width - mid_x, fb.height - mid_y),
-            Color::rgb(255, 255, 255),
-        );
-    }
-
     // Load configuration
     let config_storage = EfiConfigStorage::new(None);
     let setup_complete = config_storage.exists();
@@ -193,20 +217,24 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
         // Leak the font to keep a 'static reference for the screen.
         let font = Box::leak(Box::new(font));
         screen.set_font(font);
+    } else {
+        serial::println("moteOS: failed to load PSF font");
     }
 
     // Initialize network (if configured)
     let mut network = init::init_network(&config).ok();
 
     // Initialize LLM provider
-    let (provider, provider_name, model) = match init::init_provider(&config, network.as_mut()) {
-        Ok((p, name, m)) => (p, name, m),
-        Err(_) => {
-            // Fallback to a dummy provider or panic
-            // For now, we'll create a minimal provider that will fail gracefully
-            panic!("Failed to initialize LLM provider");
-        }
-    };
+    let (provider, provider_name, model, provider_error) =
+        match init::init_provider(&config, network.as_mut()) {
+            Ok((p, name, m)) => (p, name, m, None),
+            Err(err) => (
+                Box::new(NullProvider) as Box<dyn LlmProvider>,
+                String::from("offline"),
+                String::from("none"),
+                Some(err),
+            ),
+        };
 
     // Set up global state
     {
@@ -220,6 +248,28 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
             model,
             setup_complete,
         ));
+    }
+
+    // Seed the chat UI with a brief welcome so the screen isn't empty.
+    {
+        let mut state = GLOBAL_STATE.lock();
+        if let Some(ref mut kernel_state) = *state {
+            kernel_state.chat_screen.add_message(
+                tui::widgets::MessageRole::Assistant,
+                String::from("Welcome to moteOS. Type a message to get started."),
+            );
+            if let Some(err) = provider_error {
+                kernel_state
+                    .chat_screen
+                    .set_status(tui::screens::ConnectionStatus::Error(err));
+                kernel_state.chat_screen.add_message(
+                    tui::widgets::MessageRole::Assistant,
+                    String::from(
+                        "LLM provider not configured. Open Config (F4) to set an API key.",
+                    ),
+                );
+            }
+        }
     }
 
     // Enter main event loop

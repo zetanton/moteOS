@@ -8,6 +8,8 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use config::Key;
+#[cfg(target_arch = "x86_64")]
+use crate::ps2;
 use llm::{GenerationConfig, Message, Role};
 use tui::types::Key as TuiKey;
 

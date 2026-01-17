@@ -45,8 +45,90 @@ pub fn init() {
     let mut buffer = KEY_BUFFER.lock();
     buffer.clear();
     
-    // Enable keyboard interrupts (done via PIC configuration)
-    // The keyboard should already be enabled by the bootloader
+    // Best-effort PS/2 controller + keyboard init to ensure the port is enabled
+    // and scanning is active. This is important when UEFI left PS/2 disabled.
+    unsafe {
+        let status = Port::<u8>::new(PS2_STATUS_PORT);
+        let command = Port::<u8>::new(PS2_COMMAND_PORT);
+        let data = Port::<u8>::new(PS2_DATA_PORT);
+
+        // Drain any pending output
+        for _ in 0..32 {
+            if status.read() & STATUS_OUTPUT_FULL != 0 {
+                let _ = data.read();
+            } else {
+                break;
+            }
+        }
+
+        // Enable first PS/2 port
+        wait_input_empty();
+        command.write(0xAE);
+
+        // Read controller config byte
+        wait_input_empty();
+        command.write(0x20);
+        let mut config_byte = 0u8;
+        if wait_output_full() {
+            config_byte = data.read();
+        }
+
+        // Enable first port interrupt and disable translation
+        config_byte |= 0x01;
+        config_byte &= !(1 << 6);
+
+        // Write controller config byte back
+        wait_input_empty();
+        command.write(0x60);
+        wait_input_empty();
+        data.write(config_byte);
+
+        // Set keyboard scancode set 2
+        wait_input_empty();
+        data.write(0xF0);
+        let _ = read_ack();
+        wait_input_empty();
+        data.write(0x02);
+        let _ = read_ack();
+
+        // Enable scanning
+        wait_input_empty();
+        data.write(0xF4);
+        let _ = read_ack();
+    }
+}
+
+fn wait_input_empty() {
+    let status = Port::<u8>::new(PS2_STATUS_PORT);
+    for _ in 0..10000 {
+        unsafe {
+            if status.read() & STATUS_INPUT_FULL == 0 {
+                break;
+            }
+        }
+    }
+}
+
+fn wait_output_full() -> bool {
+    let status = Port::<u8>::new(PS2_STATUS_PORT);
+    for _ in 0..10000 {
+        unsafe {
+            if status.read() & STATUS_OUTPUT_FULL != 0 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn read_ack() -> bool {
+    let data = Port::<u8>::new(PS2_DATA_PORT);
+    if wait_output_full() {
+        let ack = unsafe { data.read() };
+        ack == 0xFA
+    } else {
+        false
+    }
 }
 
 /// Check if a scancode is available
@@ -89,6 +171,10 @@ pub fn read_scancode() -> Option<u8> {
 /// Some(Key) if the scancode represents a key press, None otherwise.
 fn process_scancode(scancode: u8, extended: bool) -> Option<Key> {
     // Handle break codes (key release) - we ignore these
+    if scancode == 0xFA {
+        // ACK from keyboard
+        return None;
+    }
     if scancode == SCANCODE_BREAK_PREFIX {
         return None;
     }
@@ -100,94 +186,87 @@ fn process_scancode(scancode: u8, extended: bool) -> Option<Key> {
     
     // Convert scancode to Key
     match (extended, scancode) {
-        // Regular keys (US QWERTY layout)
-        (false, 0x1C) => Some(Key::Enter),
-        (false, 0x0E) => Some(Key::Backspace),
-        (false, 0x01) => Some(Key::Esc),
-        (false, 0x0F) => Some(Key::Tab),
-        (false, 0x48) => Some(Key::Up),
-        (false, 0x50) => Some(Key::Down),
-        (false, 0x4B) => Some(Key::Left),
-        (false, 0x4D) => Some(Key::Right),
-        (false, 0x53) => Some(Key::Delete),
-        
-        // Function keys
-        (false, 0x3B) => Some(Key::F(1)),
-        (false, 0x3C) => Some(Key::F(2)),
-        (false, 0x3D) => Some(Key::F(3)),
-        (false, 0x3E) => Some(Key::F(4)),
-        (false, 0x3F) => Some(Key::F(5)),
-        (false, 0x40) => Some(Key::F(6)),
-        (false, 0x41) => Some(Key::F(7)),
-        (false, 0x42) => Some(Key::F(8)),
-        (false, 0x43) => Some(Key::F(9)),
-        (false, 0x44) => Some(Key::F(10)),
-        (false, 0x57) => Some(Key::F(11)),
-        (false, 0x58) => Some(Key::F(12)),
-        
-        // Extended keys
-        (true, 0x53) => Some(Key::Delete), // Delete (extended)
-        (true, 0x48) => Some(Key::Up),     // Up arrow (extended)
-        (true, 0x50) => Some(Key::Down),    // Down arrow (extended)
-        (true, 0x4B) => Some(Key::Left),    // Left arrow (extended)
-        (true, 0x4D) => Some(Key::Right),   // Right arrow (extended)
-        
-        // Character keys (US QWERTY layout)
-        (false, 0x02) => Some(Key::Char('1')),
-        (false, 0x03) => Some(Key::Char('2')),
-        (false, 0x04) => Some(Key::Char('3')),
-        (false, 0x05) => Some(Key::Char('4')),
-        (false, 0x06) => Some(Key::Char('5')),
-        (false, 0x07) => Some(Key::Char('6')),
-        (false, 0x08) => Some(Key::Char('7')),
-        (false, 0x09) => Some(Key::Char('8')),
-        (false, 0x0A) => Some(Key::Char('9')),
-        (false, 0x0B) => Some(Key::Char('0')),
-        (false, 0x0C) => Some(Key::Char('-')),
-        (false, 0x0D) => Some(Key::Char('=')),
-        
-        (false, 0x10) => Some(Key::Char('q')),
-        (false, 0x11) => Some(Key::Char('w')),
-        (false, 0x12) => Some(Key::Char('e')),
-        (false, 0x13) => Some(Key::Char('r')),
-        (false, 0x14) => Some(Key::Char('t')),
-        (false, 0x15) => Some(Key::Char('y')),
-        (false, 0x16) => Some(Key::Char('u')),
-        (false, 0x17) => Some(Key::Char('i')),
-        (false, 0x18) => Some(Key::Char('o')),
-        (false, 0x19) => Some(Key::Char('p')),
-        (false, 0x1A) => Some(Key::Char('[')),
-        (false, 0x1B) => Some(Key::Char(']')),
-        
-        (false, 0x1E) => Some(Key::Char('a')),
-        (false, 0x1F) => Some(Key::Char('s')),
-        (false, 0x20) => Some(Key::Char('d')),
-        (false, 0x21) => Some(Key::Char('f')),
-        (false, 0x22) => Some(Key::Char('g')),
-        (false, 0x23) => Some(Key::Char('h')),
-        (false, 0x24) => Some(Key::Char('j')),
-        (false, 0x25) => Some(Key::Char('k')),
-        (false, 0x26) => Some(Key::Char('l')),
-        (false, 0x27) => Some(Key::Char(';')),
-        (false, 0x28) => Some(Key::Char('\'')),
-        (false, 0x29) => Some(Key::Char('`')),
-        
-        (false, 0x2B) => Some(Key::Char('\\')),
-        (false, 0x2C) => Some(Key::Char('z')),
-        (false, 0x2D) => Some(Key::Char('x')),
-        (false, 0x2E) => Some(Key::Char('c')),
-        (false, 0x2F) => Some(Key::Char('v')),
-        (false, 0x30) => Some(Key::Char('b')),
+        // Regular keys (Set 2 scancodes, US QWERTY)
+        (false, 0x5A) => Some(Key::Enter),
+        (false, 0x66) => Some(Key::Backspace),
+        (false, 0x76) => Some(Key::Esc),
+        (false, 0x0D) => Some(Key::Tab),
+
+        // Function keys (Set 2)
+        (false, 0x05) => Some(Key::F(1)),
+        (false, 0x06) => Some(Key::F(2)),
+        (false, 0x04) => Some(Key::F(3)),
+        (false, 0x0C) => Some(Key::F(4)),
+        (false, 0x03) => Some(Key::F(5)),
+        (false, 0x0B) => Some(Key::F(6)),
+        (false, 0x83) => Some(Key::F(7)),
+        (false, 0x0A) => Some(Key::F(8)),
+        (false, 0x01) => Some(Key::F(9)),
+        (false, 0x09) => Some(Key::F(10)),
+        (false, 0x78) => Some(Key::F(11)),
+        (false, 0x07) => Some(Key::F(12)),
+
+        // Extended keys (Set 2)
+        (true, 0x71) => Some(Key::Delete),
+        (true, 0x75) => Some(Key::Up),
+        (true, 0x72) => Some(Key::Down),
+        (true, 0x6B) => Some(Key::Left),
+        (true, 0x74) => Some(Key::Right),
+
+        // Character keys (Set 2)
+        (false, 0x16) => Some(Key::Char('1')),
+        (false, 0x1E) => Some(Key::Char('2')),
+        (false, 0x26) => Some(Key::Char('3')),
+        (false, 0x25) => Some(Key::Char('4')),
+        (false, 0x2E) => Some(Key::Char('5')),
+        (false, 0x36) => Some(Key::Char('6')),
+        (false, 0x3D) => Some(Key::Char('7')),
+        (false, 0x3E) => Some(Key::Char('8')),
+        (false, 0x46) => Some(Key::Char('9')),
+        (false, 0x45) => Some(Key::Char('0')),
+        (false, 0x4E) => Some(Key::Char('-')),
+        (false, 0x55) => Some(Key::Char('=')),
+
+        (false, 0x15) => Some(Key::Char('q')),
+        (false, 0x1D) => Some(Key::Char('w')),
+        (false, 0x24) => Some(Key::Char('e')),
+        (false, 0x2D) => Some(Key::Char('r')),
+        (false, 0x2C) => Some(Key::Char('t')),
+        (false, 0x35) => Some(Key::Char('y')),
+        (false, 0x3C) => Some(Key::Char('u')),
+        (false, 0x43) => Some(Key::Char('i')),
+        (false, 0x44) => Some(Key::Char('o')),
+        (false, 0x4D) => Some(Key::Char('p')),
+        (false, 0x54) => Some(Key::Char('[')),
+        (false, 0x5B) => Some(Key::Char(']')),
+
+        (false, 0x1C) => Some(Key::Char('a')),
+        (false, 0x1B) => Some(Key::Char('s')),
+        (false, 0x23) => Some(Key::Char('d')),
+        (false, 0x2B) => Some(Key::Char('f')),
+        (false, 0x34) => Some(Key::Char('g')),
+        (false, 0x33) => Some(Key::Char('h')),
+        (false, 0x3B) => Some(Key::Char('j')),
+        (false, 0x42) => Some(Key::Char('k')),
+        (false, 0x4B) => Some(Key::Char('l')),
+        (false, 0x4C) => Some(Key::Char(';')),
+        (false, 0x52) => Some(Key::Char('\'')),
+        (false, 0x0E) => Some(Key::Char('`')),
+
+        (false, 0x5D) => Some(Key::Char('\\')),
+        (false, 0x1A) => Some(Key::Char('z')),
+        (false, 0x22) => Some(Key::Char('x')),
+        (false, 0x21) => Some(Key::Char('c')),
+        (false, 0x2A) => Some(Key::Char('v')),
+        (false, 0x32) => Some(Key::Char('b')),
         (false, 0x31) => Some(Key::Char('n')),
-        (false, 0x32) => Some(Key::Char('m')),
-        (false, 0x33) => Some(Key::Char(',')),
-        (false, 0x34) => Some(Key::Char('.')),
-        (false, 0x35) => Some(Key::Char('/')),
-        
-        (false, 0x39) => Some(Key::Char(' ')), // Space
-        
-        // Shifted characters (we'll handle shift in the interrupt handler if needed)
-        // For now, we'll just return the base character
+        (false, 0x3A) => Some(Key::Char('m')),
+        (false, 0x41) => Some(Key::Char(',')),
+        (false, 0x49) => Some(Key::Char('.')),
+        (false, 0x4A) => Some(Key::Char('/')),
+
+        (false, 0x29) => Some(Key::Char(' ')),
+
         _ => None,
     }
 }
