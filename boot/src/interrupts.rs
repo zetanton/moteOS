@@ -1,5 +1,9 @@
 // Interrupt handling for moteOS
 // Configures IDT (x86_64) or GIC (ARM64) and interrupt handlers
+// Note: Interrupts are not used in UEFI boot - this module is only for kernel runtime
+
+#![cfg_attr(target_arch = "x86_64", feature(abi_x86_interrupt))]
+#![cfg(not(target_os = "uefi"))]
 
 #[cfg(target_arch = "x86_64")]
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};

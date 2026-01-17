@@ -5,13 +5,17 @@
 
 pub mod bios;
 pub mod framebuffer;
+#[cfg(not(target_env = "uefi"))]
+
+#[cfg(not(target_env = "uefi"))]
 pub mod interrupts;
 pub mod memory;
 pub mod timer;
 pub mod uefi;
 
 // Re-export commonly used types
-pub use framebuffer::{Color, FramebufferInfo, PixelFormat, Point, Rect};
+pub use framebuffer::FramebufferInfo;
+pub use framebuffer::PixelFormat;
 pub use memory::{MemoryKind, MemoryMap, MemoryRegion};
 
 /// Boot information passed to kernel_main

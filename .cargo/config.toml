@@ -1,27 +1,33 @@
-# Cargo configuration for moteOS cross-compilation
-# Supports x86_64 and aarch64 architectures
+# Cargo cross-compilation configuration for moteOS
+# See docs/TECHNICAL_SPECIFICATIONS.md Section 3.8.7-8
 
-[build]
-# Default target (can be overridden with --target)
-# target = "x86_64-unknown-uefi"
-
-# Target-specific configurations
-[target.x86_64-unknown-uefi]
-# x86_64 UEFI target uses default linker
-# No custom linker script needed for UEFI
-
+# AArch64 (ARM64) target configuration
 [target.aarch64-unknown-uefi]
-# ARM64 UEFI target configuration for Raspberry Pi
+# Linker for ARM64 cross-compilation
+# On macOS, try aarch64-elf-gcc or aarch64-linux-gnu-gcc
+# On Linux, use aarch64-linux-gnu-gcc
+# Rust may use its own linker if these aren't available
 linker = "aarch64-linux-gnu-ld"
-rustflags = [
-    "-C", "link-arg=-Tlinker-aarch64.ld",
-    "-C", "link-arg=-nostdlib",
-    "-C", "link-arg=-z", "max-page-size=4096",
-    "-C", "link-arg=-z", "common-page-size=4096",
-]
+# Alternative: try aarch64-elf-gcc on macOS if above fails
+# linker = "aarch64-elf-gcc"
 
-# Additional linker flags for ARM64
-[target.aarch64-unknown-uefi.linker-flags]
-"-T" = "linker-aarch64.ld"
-"-nostdlib" = ""
-"-z" = ["max-page-size=4096", "common-page-size=4096"]
+# Linker flags for ARM64 UEFI
+# Note: The UEFI target may handle linking automatically
+# If a custom linker script is needed, uncomment and adjust the path
+# rustflags = [
+#     "-C", "link-arg=-Tlinker-aarch64.ld",
+#     "-C", "link-arg=-nostdlib",
+#     "-C", "link-arg=-Wl,--gc-sections",
+#     "-C", "link-arg=-Wl,-z,max-page-size=4096",  # 4KB page size for ARM64 MMU
+# ]
+
+# x86_64 target configuration (for cross-compilation)
+[target.x86_64-unknown-uefi]
+# Standard x86_64 UEFI build
+# No custom linker needed - uses default Rust UEFI toolchain
+# The UEFI target handles linking automatically
+
+# Build configuration
+[build]
+# Default target for builds (can be overridden with --target)
+# target = "x86_64-unknown-uefi"

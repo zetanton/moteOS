@@ -1,7 +1,7 @@
 # Makefile for moteOS ISO generation and QEMU testing
 # See docs/TECHNICAL_SPECIFICATIONS.md Section 3.8.8-9
 
-.PHONY: help iso-uefi iso-bios iso-aarch64 iso-all test-boot test-network test-api test-build-aarch64 test-all clean
+.PHONY: help iso-uefi iso-bios iso-aarch64 iso-all test-boot test-boot-aarch64 test-network test-api test-build-aarch64 test-all clean
 
 # Default target
 help:
@@ -14,7 +14,8 @@ help:
 	@echo "  make iso-all        - Build all ISOs (x86_64 UEFI, BIOS, aarch64)"
 	@echo ""
 	@echo "QEMU Testing:"
-	@echo "  make test-boot      - Test kernel boot in QEMU"
+	@echo "  make test-boot      - Test kernel boot in QEMU (x86_64)"
+	@echo "  make test-boot-aarch64 - Test kernel boot in QEMU (aarch64)"
 	@echo "  make test-network   - Test network connectivity in QEMU"
 	@echo "  make test-api       - Test LLM API connectivity in QEMU"
 	@echo "  make test-build-aarch64 - Test aarch64 cross-compilation build"
@@ -45,9 +46,14 @@ iso-all: iso-uefi iso-bios iso-aarch64
 
 # QEMU Test Targets
 test-boot:
-	@echo "Running boot test..."
+	@echo "Running boot test (x86_64)..."
 	@chmod +x tools/test-boot.sh
 	@./tools/test-boot.sh
+
+test-boot-aarch64:
+	@echo "Running boot test (aarch64)..."
+	@chmod +x tools/test-boot-aarch64.sh
+	@./tools/test-boot-aarch64.sh
 
 test-network:
 	@echo "Running network test..."
@@ -64,7 +70,7 @@ test-build-aarch64:
 	@chmod +x tools/test-build-aarch64.sh
 	@./tools/test-build-aarch64.sh
 
-test-all: test-boot test-network test-api test-build-aarch64
+test-all: test-boot test-boot-aarch64 test-network test-api test-build-aarch64
 	@echo "All tests completed"
 
 # Clean target
@@ -78,9 +84,14 @@ clean:
 
 # Convenience targets for quick testing
 run-qemu-uefi: iso-uefi
-	@echo "Starting QEMU with UEFI ISO..."
+	@echo "Starting QEMU with UEFI ISO (x86_64)..."
 	@chmod +x tools/test-boot.sh
 	@./tools/test-boot.sh
+
+run-qemu-aarch64: iso-aarch64
+	@echo "Starting QEMU with UEFI ISO (aarch64)..."
+	@chmod +x tools/test-boot-aarch64.sh
+	@./tools/test-boot-aarch64.sh
 
 run-qemu-bios: iso-bios
 	@echo "Starting QEMU with BIOS ISO..."

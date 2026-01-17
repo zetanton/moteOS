@@ -25,3 +25,18 @@ pub extern "efiapi" fn efi_main(
     #[cfg(target_arch = "aarch64")]
     return aarch64::efi_main(image_handle, system_table);
 }
+
+/// Panic handler for UEFI boot
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    // In a real implementation, we'd log the panic info via UEFI console
+    // For now, just loop forever
+    loop {
+        unsafe {
+            #[cfg(target_arch = "x86_64")]
+            core::arch::asm!("hlt");
+            #[cfg(target_arch = "aarch64")]
+            core::arch::asm!("wfi");
+        }
+    }
+}
