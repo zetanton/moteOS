@@ -4,6 +4,10 @@ extern crate alloc;
 
 pub mod gguf;
 pub mod error;
+pub mod tensor;
+pub mod ops;
+pub mod simd;
 
 pub use gguf::{GgufFile, MetadataValue, TensorInfo};
 pub use error::{ModelError, ParseError};
+pub use tensor::{Tensor, TensorData, BlockQ4K, QK_K};
