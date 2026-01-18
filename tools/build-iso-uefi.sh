@@ -18,8 +18,14 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}Building moteOS UEFI boot ISO...${NC}"
 
+# Prefer rustup's cargo over Homebrew cargo (rustup cargo has target support)
+if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 # Check for required tools
 command -v cargo >/dev/null 2>&1 || { echo -e "${RED}Error: cargo not found${NC}" >&2; exit 1; }
+command -v rustup >/dev/null 2>&1 || { echo -e "${RED}Error: rustup not found. Install rustup to manage Rust toolchains and targets.${NC}" >&2; exit 1; }
 command -v xorriso >/dev/null 2>&1 || { echo -e "${RED}Error: xorriso not found. Install with: apt-get install xorriso (Debian/Ubuntu) or brew install xorriso (macOS)${NC}" >&2; exit 1; }
 
 # Check for UEFI target
@@ -84,6 +90,8 @@ xorriso -as mkisofs \
     -no-emul-boot \
     -boot-load-size 4 \
     -boot-info-table \
+    -eltorito-platform efi \
+    -isohybrid-gpt-basdat \
     -o "$OUTPUT_ISO" \
     "$ISO_DIR" || {
     echo -e "${RED}Error: ISO creation failed${NC}" >&2
