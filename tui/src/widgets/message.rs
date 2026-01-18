@@ -21,6 +21,8 @@ pub enum MessageRole {
     User,
     /// Message from the assistant
     Assistant,
+    /// System message (help, notifications, etc.)
+    System,
 }
 
 /// Message widget for displaying chat messages
@@ -193,6 +195,10 @@ impl MessageWidget {
                 // Blend accent_assistant with surface
                 theme.accent_assistant.blend(theme.surface, 0.15)
             }
+            MessageRole::System => {
+                // System messages: use a subtle info color
+                theme.accent_primary.blend(theme.surface, 0.10)
+            }
         }
     }
 
@@ -201,6 +207,7 @@ impl MessageWidget {
         match self.role {
             MessageRole::User => theme.text_primary,
             MessageRole::Assistant => theme.text_primary,
+            MessageRole::System => theme.text_secondary,
         }
     }
 

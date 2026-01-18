@@ -3,7 +3,11 @@
 //! This module handles updating the screen/framebuffer with the current
 //! application state, including rendering chat messages, input, and UI elements.
 
+extern crate alloc;
+use alloc::format;
+use alloc::string::String;
 use crate::GLOBAL_STATE;
+use config::{ApiKeyProvider, WizardState};
 #[cfg(target_arch = "x86_64")]
 use crate::ps2;
 
@@ -57,68 +61,111 @@ fn render_setup_wizard(kernel_state: &mut crate::KernelState) {
     if needs_full {
         kernel_state.screen.clear();
     }
-    
-    // TODO: Implement full wizard UI once wizard screen is integrated
-    // For now, display a simple message indicating setup is needed
+
     let bounds = kernel_state.screen.bounds();
     let Some((char_width, char_height)) = kernel_state.screen.char_size() else {
         return;
     };
-    
-    let theme = kernel_state.screen.theme();
-    let welcome_text = "Welcome to moteOS Setup";
-    let text_width = welcome_text.chars().count() * char_width;
-    let text_x = bounds.x + (bounds.width / 2) - (text_width / 2);
-    let text_y = bounds.y + (bounds.height / 2);
-    
-    kernel_state.screen.draw_text(text_x, text_y, welcome_text, theme.text_primary);
-    
-    let instruction_text = "Press any key to continue...";
-    let inst_width = instruction_text.chars().count() * char_width;
-    let inst_x = bounds.x + (bounds.width / 2) - (inst_width / 2);
-    let inst_y = text_y + char_height * 2;
-    
-    kernel_state.screen.draw_text(inst_x, inst_y, instruction_text, theme.text_secondary);
 
-    // Show PS/2 debug info to confirm input is arriving
-    let debug_y = inst_y + char_height * 2;
-    let debug_x = bounds.x + char_width;
-    #[cfg(target_arch = "x86_64")]
-    {
-        let (last, len, pending) = ps2::debug_snapshot();
-        let last_text = match last {
-            Some(code) => {
-                let mut text = alloc::string::String::from("PS/2: last=0x");
-                use alloc::string::ToString;
-                let hi = (code >> 4) & 0x0F;
-                let lo = code & 0x0F;
-                text.push(
-                    core::char::from_digit(hi as u32, 16)
-                        .unwrap()
-                        .to_ascii_uppercase(),
-                );
-                text.push(
-                    core::char::from_digit(lo as u32, 16)
-                        .unwrap()
-                        .to_ascii_uppercase(),
-                );
-                text.push_str(" buf=");
-                text.push_str(&len.to_string());
-                text.push_str(" pending=");
-                text.push_str(if pending { "1" } else { "0" });
-                text
+    let theme = kernel_state.screen.theme();
+
+    // Calculate center position
+    let center_x = bounds.width / 2;
+    let center_y = bounds.height / 2;
+
+    // Helper to draw centered text
+    let draw_centered = |screen: &mut tui::Screen, y: usize, text: &str, color| {
+        let text_width = text.chars().count() * char_width;
+        let x = center_x.saturating_sub(text_width / 2);
+        screen.draw_text(x, y, text, color);
+    };
+
+    // Draw title
+    let title = "moteOS Setup";
+    draw_centered(&mut kernel_state.screen, char_height * 2, title, theme.accent_primary);
+
+    // Render based on wizard state
+    let wizard_state = kernel_state.wizard.state().clone();
+    match wizard_state {
+        WizardState::Welcome => {
+            draw_centered(&mut kernel_state.screen, center_y - char_height, "Welcome to moteOS!", theme.text_primary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height, "Press ENTER to begin setup", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 3, "Press ESC to cancel", theme.text_tertiary);
+        }
+        WizardState::NetworkTypeSelect => {
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 3, "Select Network Type", theme.text_primary);
+            draw_centered(&mut kernel_state.screen, center_y - char_height, "[1] Ethernet", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height, "[2] WiFi", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 4, "Press ESC to go back", theme.text_tertiary);
+        }
+        WizardState::NetworkScan { .. } => {
+            draw_centered(&mut kernel_state.screen, center_y, "Scanning for WiFi networks...", theme.text_primary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 2, "Press ESC to go back", theme.text_tertiary);
+        }
+        WizardState::NetworkSelect { selected_index } => {
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 5, "Select WiFi Network", theme.text_primary);
+
+            let networks = kernel_state.wizard.available_networks();
+            let start_y = center_y - char_height * 2;
+            for (i, network) in networks.iter().take(5).enumerate() {
+                let prefix = if i == selected_index { "> " } else { "  " };
+                let line = format!("{}{}", prefix, network.ssid);
+                let color = if i == selected_index { theme.accent_primary } else { theme.text_secondary };
+                draw_centered(&mut kernel_state.screen, start_y + i * char_height, &line, color);
             }
-            None => alloc::string::String::from("PS/2: last=none buf=0 pending=0"),
-        };
-        kernel_state
-            .screen
-            .draw_text(debug_x, debug_y, &last_text, theme.text_tertiary);
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        kernel_state
-            .screen
-            .draw_text(debug_x, debug_y, "PS/2: n/a", theme.text_tertiary);
+
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 4, "Use UP/DOWN to select, ENTER to confirm", theme.text_tertiary);
+        }
+        WizardState::NetworkPassword { ref ssid } => {
+            let title = format!("Enter password for: {}", ssid);
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 2, &title, theme.text_primary);
+
+            // Show password input (masked)
+            let input = kernel_state.wizard.input_buffer();
+            let masked: String = "*".repeat(input.len());
+            draw_centered(&mut kernel_state.screen, center_y, &masked, theme.text_secondary);
+
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 3, "Press ENTER to connect, ESC to go back", theme.text_tertiary);
+        }
+        WizardState::ApiKeyMenu => {
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 4, "Configure LLM Provider", theme.text_primary);
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 2, "[1] OpenAI", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y - char_height, "[2] Anthropic", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y, "[3] Groq", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height, "[4] xAI", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 3, "[S] Skip (use local model only)", theme.text_secondary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 5, "Press ESC to go back", theme.text_tertiary);
+        }
+        WizardState::ApiKeyInput { ref provider } => {
+            let provider_name = match provider {
+                ApiKeyProvider::OpenAI => "OpenAI",
+                ApiKeyProvider::Anthropic => "Anthropic",
+                ApiKeyProvider::Groq => "Groq",
+                ApiKeyProvider::XAI => "xAI",
+                ApiKeyProvider::Skip => "Skip",
+            };
+            let title = format!("Enter {} API Key", provider_name);
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 2, &title, theme.text_primary);
+
+            // Show API key input (masked)
+            let input = kernel_state.wizard.input_buffer();
+            let masked: String = if input.is_empty() {
+                String::from("(type your API key)")
+            } else {
+                "*".repeat(input.len())
+            };
+            draw_centered(&mut kernel_state.screen, center_y, &masked, theme.text_secondary);
+
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 3, "Press ENTER to save, ESC to go back", theme.text_tertiary);
+        }
+        WizardState::Ready { .. } => {
+            draw_centered(&mut kernel_state.screen, center_y - char_height * 2, "Setup Complete!", theme.accent_success);
+            draw_centered(&mut kernel_state.screen, center_y, "Press ENTER to save and start moteOS", theme.text_primary);
+            draw_centered(&mut kernel_state.screen, center_y + char_height * 2, "Press ESC to go back and make changes", theme.text_tertiary);
+        }
+        WizardState::Complete => {
+            draw_centered(&mut kernel_state.screen, center_y, "Starting moteOS...", theme.text_primary);
+        }
     }
 }
 

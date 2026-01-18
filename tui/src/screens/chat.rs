@@ -465,49 +465,80 @@ impl ChatScreen {
             .map(|msg| self.estimate_message_height(msg, message_rect_width, char_width, char_height))
             .collect();
 
-        // Calculate total height needed
-        let total_height: usize = message_heights.iter().sum::<usize>() + (self.messages.len().saturating_sub(1) * padding);
+        // Calculate total height needed for all messages
+        let total_height: usize = message_heights.iter().sum::<usize>()
+            + self.messages.len().saturating_sub(1) * padding;
 
-        // Clamp scroll offset based on available space
-        // Scroll offset represents how many "lines" we've scrolled up
-        // We'll use a simple approach: scroll by message count
+        // Clamp scroll offset
         let max_scroll = if total_height > rect.height {
-            // Estimate max scroll in terms of message count
-            // This is approximate but works for basic scrolling
             self.messages.len().saturating_sub(1)
         } else {
             0
         };
         let scroll_offset = self.scroll_offset.min(max_scroll);
 
-        // Render messages from bottom to top
-        let mut current_y = rect.y + rect.height;
-        let mut messages_skipped = 0;
+        // Determine rendering strategy:
+        // - If messages fit in the area: render from top
+        // - If messages overflow: render from bottom (most recent visible)
+        if total_height <= rect.height && scroll_offset == 0 {
+            // Messages fit - render from top down
+            let mut current_y = rect.y + padding;
 
-        // Start from the last message and work backwards
-        for (message, &height) in self.messages.iter().zip(message_heights.iter()).rev() {
-            // Skip messages based on scroll offset
-            if messages_skipped < scroll_offset {
-                messages_skipped += 1;
-                continue;
+            for (message, &height) in self.messages.iter().zip(message_heights.iter()) {
+                // Check if we have space
+                if current_y + height > rect.y + rect.height {
+                    break;
+                }
+
+                // Create message rectangle
+                let message_rect = Rect::new(
+                    rect.x + char_width,
+                    current_y,
+                    message_rect_width,
+                    height,
+                );
+
+                // Render message
+                message.render(screen, message_rect);
+
+                // Move down for next message
+                current_y += height + padding;
             }
+        } else {
+            // Messages overflow - render from bottom up (showing most recent)
+            let mut current_y = rect.y + rect.height;
+            let mut messages_skipped = 0;
 
-            // Check if we have space to render this message
-            if current_y < rect.y || current_y < rect.y + height {
-                break;
+            // Start from the last message and work backwards
+            for (message, &height) in self.messages.iter().zip(message_heights.iter()).rev() {
+                // Skip messages based on scroll offset
+                if messages_skipped < scroll_offset {
+                    messages_skipped += 1;
+                    continue;
+                }
+
+                // Calculate the position for this message (above current position)
+                let message_y = current_y.saturating_sub(height + padding);
+
+                // Check if we have space to render this message
+                if message_y < rect.y {
+                    break;
+                }
+
+                // Create message rectangle
+                let message_rect = Rect::new(
+                    rect.x + char_width,
+                    message_y,
+                    message_rect_width,
+                    height,
+                );
+
+                // Render message
+                message.render(screen, message_rect);
+
+                // Move up for next message
+                current_y = message_y;
             }
-
-            // Position message from bottom
-            current_y = current_y.saturating_sub(height + padding);
-            let message_rect = Rect::new(
-                rect.x + char_width,
-                current_y,
-                message_rect_width,
-                height,
-            );
-
-            // Render message
-            message.render(screen, message_rect);
         }
 
         // Show scroll indicator if scrolled

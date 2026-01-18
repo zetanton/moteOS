@@ -8,7 +8,7 @@ use crate::serial;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use config::Key;
+use config::{Key, WizardEvent};
 #[cfg(target_arch = "x86_64")]
 use crate::ps2;
 use llm::{GenerationConfig, Message, Role};
@@ -76,6 +76,13 @@ fn read_serial_key() -> Option<Key> {
     }
 }
 
+/// Convert config::Key to wizard key format
+/// Note: config::Key and config::wizard::Key are the same type, exported from wizard module
+fn convert_to_wizard_key(key: Key) -> Key {
+    // They are the same type, so just return as-is
+    key
+}
+
 /// Convert config::Key to tui::types::Key
 fn convert_key(key: Key) -> TuiKey {
     match key {
@@ -123,10 +130,51 @@ fn process_key(key: Key) {
     if let Some(ref mut kernel_state) = *state {
         // If setup is not complete, handle setup wizard input
         if !kernel_state.setup_complete {
-            // For now, any key completes setup (full wizard implementation pending)
-            // In a full implementation, this would pass to SetupWizard::handle_input()
-            kernel_state.setup_complete = true;
-            // Need full redraw since we're switching screens
+            // Convert key to wizard key format
+            let wizard_key = convert_to_wizard_key(key);
+
+            // Pass input to wizard and handle events
+            let event = kernel_state.wizard.handle_input(wizard_key);
+            match event {
+                WizardEvent::RequestWifiScan => {
+                    // TODO: Trigger WiFi scan
+                    serial::println("Wizard: WiFi scan requested");
+                }
+                WizardEvent::RequestWifiConnect { ssid, password } => {
+                    // TODO: Connect to WiFi
+                    serial::println(&format!("Wizard: WiFi connect to {}", ssid));
+                }
+                WizardEvent::ConfigReady(config) => {
+                    // Save the configuration
+                    serial::println("Wizard: Config ready, saving...");
+                    kernel_state.config = config;
+                    // TODO: Persist to EFI storage
+                }
+                WizardEvent::Complete => {
+                    // Wizard completed - transition to chat screen
+                    serial::println("Wizard: Complete, transitioning to chat");
+                    kernel_state.setup_complete = true;
+
+                    // Re-initialize provider with new config
+                    if let Ok((provider, name, model)) = crate::init::init_provider(
+                        &kernel_state.config,
+                        kernel_state.network.as_mut(),
+                    ) {
+                        kernel_state.current_provider = provider;
+                        kernel_state.current_provider_name = name.clone();
+                        kernel_state.current_model = model.clone();
+                        kernel_state.chat_screen.set_provider(name);
+                        kernel_state.chat_screen.set_model(model);
+                    }
+                }
+                WizardEvent::Cancelled => {
+                    // User cancelled - could restart or show message
+                    serial::println("Wizard: Cancelled by user");
+                }
+                WizardEvent::None => {}
+            }
+
+            // Need full redraw for wizard state changes
             crate::screen::mark_dirty();
             return;
         }
@@ -137,17 +185,49 @@ fn process_key(key: Key) {
         // Handle special function keys
         match tui_key {
             TuiKey::F1 => {
-                // TODO: Show help screen
+                // Show help - add help message to chat
+                kernel_state.chat_screen.add_message(
+                    tui::widgets::MessageRole::System,
+                    String::from(
+                        "moteOS Help:\n\
+                        F1: Show this help\n\
+                        F2: Switch LLM provider\n\
+                        F3: Switch model (cycles through models)\n\
+                        F4: Show current config\n\
+                        F9: Start new chat (clears conversation)\n\
+                        F10: Shutdown\n\
+                        PageUp/PageDown: Scroll conversation\n\
+                        Enter: Send message"
+                    ),
+                );
+                crate::screen::mark_dirty();
             }
             TuiKey::F2 => {
                 // Switch provider
                 switch_provider(kernel_state);
             }
             TuiKey::F3 => {
-                // TODO: Show model selection screen
+                // Switch model - cycle through models for current provider
+                switch_model(kernel_state);
             }
             TuiKey::F4 => {
-                // TODO: Show config screen
+                // Show current config in chat
+                let config_info = format!(
+                    "Current Configuration:\n\
+                    Provider: {}\n\
+                    Model: {}\n\
+                    Temperature: {:.1}\n\
+                    Stream: {}",
+                    kernel_state.current_provider_name,
+                    kernel_state.current_model,
+                    kernel_state.config.preferences.temperature,
+                    if kernel_state.config.preferences.stream_responses { "Yes" } else { "No" }
+                );
+                kernel_state.chat_screen.add_message(
+                    tui::widgets::MessageRole::System,
+                    config_info,
+                );
+                crate::screen::mark_dirty();
             }
             TuiKey::F9 => {
                 // Clear conversation (new chat)
@@ -156,6 +236,7 @@ fn process_key(key: Key) {
                     kernel_state.current_provider_name.clone(),
                     kernel_state.current_model.clone(),
                 );
+                crate::screen::mark_dirty();
             }
             TuiKey::F10 => {
                 // Shutdown
@@ -190,6 +271,44 @@ fn process_key(key: Key) {
     }
 }
 
+/// Switch to a different model for the current provider
+///
+/// Cycles through available models for the current LLM provider.
+fn switch_model(kernel_state: &mut crate::KernelState) {
+    let models = kernel_state.current_provider.models();
+    if models.is_empty() {
+        // No models available
+        kernel_state.chat_screen.add_message(
+            tui::widgets::MessageRole::System,
+            String::from("No models available for this provider."),
+        );
+        crate::screen::mark_dirty();
+        return;
+    }
+
+    // Find current model index
+    let current_idx = models
+        .iter()
+        .position(|m| m.id == kernel_state.current_model)
+        .unwrap_or(0);
+
+    // Cycle to next model
+    let next_idx = (current_idx + 1) % models.len();
+    let next_model = &models[next_idx];
+
+    // Update model
+    kernel_state.current_model = next_model.id.to_string();
+    kernel_state.chat_screen.set_model(kernel_state.current_model.clone());
+
+    // Notify user
+    let msg = format!("Switched to model: {}", next_model.name);
+    kernel_state.chat_screen.add_message(
+        tui::widgets::MessageRole::System,
+        msg,
+    );
+    crate::screen::mark_dirty();
+}
+
 /// Switch to a different LLM provider
 ///
 /// Cycles through available providers or allows selection.
@@ -212,15 +331,29 @@ fn switch_provider(kernel_state: &mut crate::KernelState) {
     match crate::init::init_provider(&temp_config, kernel_state.network.as_mut()) {
         Ok((provider, name, model)) => {
             kernel_state.current_provider = provider;
-            kernel_state.current_provider_name = name;
-            kernel_state.current_model = model;
-            kernel_state.chat_screen.set_provider(kernel_state.current_provider_name.clone());
-            kernel_state.chat_screen.set_model(kernel_state.current_model.clone());
+            kernel_state.current_provider_name = name.clone();
+            kernel_state.current_model = model.clone();
+            kernel_state.chat_screen.set_provider(name.clone());
+            kernel_state.chat_screen.set_model(model.clone());
             // Update config to persist the change
             kernel_state.config.preferences.default_provider = next_provider.to_string();
+
+            // Notify user
+            let msg = format!("Switched to provider: {} ({})", name, model);
+            kernel_state.chat_screen.add_message(
+                tui::widgets::MessageRole::System,
+                msg,
+            );
+            crate::screen::mark_dirty();
         }
-        Err(_) => {
-            // Failed to switch, keep current provider
+        Err(e) => {
+            // Failed to switch - notify user
+            let msg = format!("Failed to switch to {}: {}", next_provider, e);
+            kernel_state.chat_screen.add_message(
+                tui::widgets::MessageRole::System,
+                msg,
+            );
+            crate::screen::mark_dirty();
         }
     }
 }

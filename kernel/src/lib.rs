@@ -19,7 +19,7 @@ use alloc::string::String;
 #[cfg(not(feature = "uefi-minimal"))]
 use alloc::vec::Vec;
 #[cfg(not(feature = "uefi-minimal"))]
-use config::{decrypt_api_key, ConfigStorage, EfiConfigStorage, MoteConfig};
+use config::{decrypt_api_key, ConfigStorage, EfiConfigStorage, MoteConfig, SetupWizard};
 use core::panic::PanicInfo;
 #[cfg(not(feature = "uefi-minimal"))]
 use llm::{GenerationConfig, LlmProvider, Message, Role};
@@ -120,6 +120,8 @@ pub struct KernelState {
     pub setup_complete: bool,
     /// Whether we're currently generating a response
     pub is_generating: bool,
+    /// Setup wizard (used during initial configuration)
+    pub wizard: SetupWizard,
 }
 
 #[cfg(not(feature = "uefi-minimal"))]
@@ -146,6 +148,7 @@ impl KernelState {
             conversation: Vec::new(),
             setup_complete,
             is_generating: false,
+            wizard: SetupWizard::new(),
         }
     }
 }
