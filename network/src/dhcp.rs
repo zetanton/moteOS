@@ -101,20 +101,20 @@ impl core::fmt::Display for DhcpState {
 pub fn extract_config(socket: &mut DhcpSocket) -> Option<IpConfig> {
     match socket.poll()? {
         Event::Configured(config) => {
-            // Extract IP address and prefix length
+    // Extract IP address and prefix length
             let ip = config.address.address();
             let prefix_len = config.address.prefix_len();
 
-            let mut ip_config = IpConfig::new(ip, prefix_len);
+    let mut ip_config = IpConfig::new(ip, prefix_len);
 
-            // Extract gateway (router)
-            if let Some(router) = config.router {
-                ip_config.gateway = Some(router);
-            }
+    // Extract gateway (router)
+    if let Some(router) = config.router {
+        ip_config.gateway = Some(router);
+    }
 
-            // Extract DNS servers
+    // Extract DNS servers
             for dns in config.dns_servers.iter() {
-                ip_config.dns.push(*dns);
+            ip_config.dns.push(*dns);
             }
 
             Some(ip_config)

@@ -4,7 +4,7 @@
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryKind {
-    /// Usable RAM
+    /// Usable RAM - safe to allocate
     Usable,
     /// Reserved (not usable)
     Reserved,
@@ -12,6 +12,8 @@ pub enum MemoryKind {
     AcpiReclaimable,
     /// ACPI NVS (Non-Volatile Storage)
     AcpiNvs,
+    /// Bootloader reclaimable - can be reclaimed after kernel init is complete
+    BootloaderReclaimable,
 }
 
 /// Memory region descriptor

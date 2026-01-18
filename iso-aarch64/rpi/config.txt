@@ -1,0 +1,25 @@
+# moteOS Raspberry Pi Configuration
+# This file configures the Raspberry Pi firmware for UEFI boot
+
+# Enable UEFI boot
+enable_uart=1
+arm_64bit=1
+
+# GPU memory split (minimum for UEFI)
+gpu_mem=64
+
+# Disable overscan
+disable_overscan=1
+
+# HDMI settings
+hdmi_force_hotplug=1
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt=1920 1080 60 6 0 0 0
+
+# Boot delay (0 = no delay)
+boot_delay=0
+
+# UEFI firmware
+# Note: Raspberry Pi 4 requires UEFI firmware (e.g., from rpi-uefi)
+# Place UEFI firmware files in the boot partition

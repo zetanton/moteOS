@@ -1,0 +1,8 @@
+echo -off
+map -r
+fs0:
+\EFI\BOOT\BOOTX64.EFI
+fs1:
+\EFI\BOOT\BOOTX64.EFI
+fs2:
+\EFI\BOOT\BOOTX64.EFI

@@ -189,14 +189,19 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
 #[no_mangle]
 pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     serial::println("moteOS: kernel_main reached (full)");
+    serial::println("moteOS: initializing heap...");
     // Initialize heap allocator
     init::init_heap(boot_info.heap_start, boot_info.heap_size);
+    serial::println("moteOS: heap ok");
 
     // Initialize PS/2 keyboard driver
+    serial::println("moteOS: initializing PS/2...");
     #[cfg(target_arch = "x86_64")]
     ps2::init();
+    serial::println("moteOS: PS/2 ok");
 
     // Load configuration
+    serial::println("moteOS: loading config...");
     let config_storage = EfiConfigStorage::new(None);
     let setup_complete = config_storage.exists();
     let config = match config_storage.load() {
@@ -222,9 +227,12 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     }
 
     // Initialize network (if configured)
+    serial::println("moteOS: initializing network...");
     let mut network = init::init_network(&config).ok();
+    serial::println("moteOS: network init done");
 
     // Initialize LLM provider
+    serial::println("moteOS: initializing LLM provider...");
     let (provider, provider_name, model, provider_error) =
         match init::init_provider(&config, network.as_mut()) {
             Ok((p, name, m)) => (p, name, m, None),
@@ -234,9 +242,11 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
                 String::from("none"),
                 Some(err),
             ),
-        };
+    };
+    serial::println("moteOS: LLM provider done");
 
     // Set up global state
+    serial::println("moteOS: setting up global state...");
     {
         let mut state = GLOBAL_STATE.lock();
         *state = Some(KernelState::new(
@@ -273,6 +283,7 @@ pub extern "C" fn kernel_main(boot_info: BootInfo) -> ! {
     }
 
     // Enter main event loop
+    serial::println("moteOS: entering event loop");
     event_loop::main_loop();
 }
 

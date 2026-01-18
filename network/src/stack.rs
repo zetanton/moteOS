@@ -173,9 +173,9 @@ impl NetworkStack {
             });
         }
         if ip_failed {
-            return Err(NetError::DriverError(
+                    return Err(NetError::DriverError(
                 "Failed to add IP address".to_string(),
-            ));
+                    ));
         }
 
         // Create socket set
@@ -420,10 +420,10 @@ impl NetworkStack {
             }
         });
         if ip_failed {
-            return Err(NetError::DhcpConfigFailed(
-                "Failed to set IP address".to_string(),
-            ));
-        }
+                return Err(NetError::DhcpConfigFailed(
+                    "Failed to set IP address".to_string(),
+                ));
+            }
 
         // Update default gateway (route)
         if let Some(gateway) = config.gateway {

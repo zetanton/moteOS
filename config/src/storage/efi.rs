@@ -80,7 +80,7 @@ mod efi_impl {
             // Try to get runtime services
             let rt = unsafe {
                 self.system_table
-                    .ok_or_else(|| ConfigError::efi_error("System table not available"))?
+                .ok_or_else(|| ConfigError::efi_error("System table not available"))?
                     .runtime_services()
             };
 
@@ -94,7 +94,7 @@ mod efi_impl {
                         Ok(None)
                     } else {
                         let msg = format!("Failed to read EFI variable: {:?}", err.status());
-                        Err(ConfigError::efi_error(&msg))
+                    Err(ConfigError::efi_error(&msg))
                     }
                 }
             }
@@ -125,7 +125,7 @@ mod efi_impl {
 
             let rt = unsafe {
                 self.system_table
-                    .ok_or_else(|| ConfigError::efi_error("System table not available"))?
+                .ok_or_else(|| ConfigError::efi_error("System table not available"))?
                     .runtime_services()
             };
 
