@@ -81,6 +81,11 @@ pub fn efi_main(
     }
 
     // Find largest usable memory region for heap
+    // Debug: count usable regions and total usable memory
+    let usable_count = memory_map.regions.iter().filter(|r| r.kind == MemoryKind::Usable).count();
+    let usable_total: usize = memory_map.regions.iter().filter(|r| r.kind == MemoryKind::Usable).map(|r| r.len).sum();
+    let _ = writeln!(st_boot_ref.stdout(), "moteOS: {} usable regions, {} bytes total", usable_count, usable_total);
+
     let (heap_start, heap_size) = if let Some(heap_region) = memory_map
         .regions
         .iter()
@@ -88,7 +93,9 @@ pub fn efi_main(
         .max_by_key(|r| r.len)
     {
         // Reserve at least 64MB for heap
-        (heap_region.start, (64 * 1024 * 1024).min(heap_region.len))
+        let size = (64 * 1024 * 1024).min(heap_region.len);
+        let _ = writeln!(st_boot_ref.stdout(), "moteOS: heap at 0x{:x}, size {} bytes", heap_region.start, size);
+        (heap_region.start, size)
     } else {
         let _ = writeln!(st_boot_ref.stdout(), "moteOS: no usable memory region");
         let bs = st_boot_ref.boot_services();
@@ -145,12 +152,56 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
         .open_protocol_exclusive::<GraphicsOutput>(gop_handle[0])
         .map_err(|_| uefi::Status::NOT_FOUND)?;
 
-    // Query available modes and use the first one
-    // TODO: Implement better mode selection (find highest resolution >= 1024x768)
-    let mut modes = gop.modes(bs);
-    let selected_mode = modes
-        .next()
-        .ok_or(uefi::Status::NOT_FOUND)?;
+    // Smart mode selection for real hardware compatibility
+    // Prefer standard resolutions with 32-bit color, avoid BltOnly modes
+    let modes = gop.modes(bs);
+    let mut best_mode = None;
+    let mut best_score = 0u32;
+
+    for mode in modes {
+        let info = mode.info();
+        let (w, h) = info.resolution();
+        let format = info.pixel_format();
+
+        // Skip BltOnly modes - no direct framebuffer access
+        if matches!(format, uefi::proto::console::gop::PixelFormat::BltOnly) {
+            continue;
+        }
+
+        // Only accept 32-bit color modes (Rgb or Bgr)
+        let is_32bpp = matches!(
+            format,
+            uefi::proto::console::gop::PixelFormat::Rgb
+                | uefi::proto::console::gop::PixelFormat::Bgr
+        );
+        if !is_32bpp {
+            continue;
+        }
+
+        // Score based on resolution - prefer moderate sizes that fit most screens
+        // Prioritize 1280x720 or 1024x768 for better compatibility
+        let score = match (w, h) {
+            (1280, 720) => 100,  // Preferred - fits most screens well
+            (1024, 768) => 95,   // Good fallback
+            (1280, 800) => 90,
+            (1280, 1024) => 85,
+            (800, 600) => 80,    // Small but usable
+            (1440, 900) => 70,
+            (1600, 900) => 65,
+            (1680, 1050) => 60,
+            (1920, 1080) => 50,  // May be too large for some screens
+            _ if w >= 1024 && w <= 1440 && h >= 720 && h <= 900 => 75,
+            _ if w >= 800 && h >= 600 => 40,
+            _ => 10,
+        };
+
+        if score > best_score {
+            best_score = score;
+            best_mode = Some(mode);
+        }
+    }
+
+    let selected_mode = best_mode.ok_or(uefi::Status::NOT_FOUND)?;
 
     // Set the mode
     gop.set_mode(&selected_mode)
@@ -161,13 +212,18 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
     let (width, height) = mode_info.resolution();
     let stride_pixels = mode_info.stride();
 
-    // Determine pixel format from mode info
-    // Force 32bpp BGRA for QEMU/OVMF; 24bpp modes often appear as grayscale.
+    // Correct pixel format handling for real hardware
     let pixel_format = match mode_info.pixel_format() {
-        uefi::proto::console::gop::PixelFormat::Rgb => PixelFormat::Bgra,
+        // RGB means red byte first (R, G, B, A order in memory)
+        uefi::proto::console::gop::PixelFormat::Rgb => PixelFormat::Rgba,
+        // BGR means blue byte first (B, G, R, A order in memory) - most common
         uefi::proto::console::gop::PixelFormat::Bgr => PixelFormat::Bgra,
+        // Bitmask requires inspecting pixel mask - default to BGRA (most common)
         uefi::proto::console::gop::PixelFormat::Bitmask => PixelFormat::Bgra,
-        uefi::proto::console::gop::PixelFormat::BltOnly => PixelFormat::Bgra,
+        // BltOnly shouldn't reach here (filtered above), but handle it
+        uefi::proto::console::gop::PixelFormat::BltOnly => {
+            return Err(uefi::Status::UNSUPPORTED);
+        }
     };
 
     // Get framebuffer base address
@@ -186,7 +242,8 @@ fn acquire_framebuffer(bs: &BootServices) -> Result<FramebufferInfo, uefi::Statu
 
 /// Get memory map from UEFI
 fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::Status> {
-    const MAX_MEMORY_REGIONS: usize = 256;
+    // Increased for real hardware with complex memory maps (200+ regions possible)
+    const MAX_MEMORY_REGIONS: usize = 512;
     const PAGE_SIZE: usize = 4096;
 
     // Static storage for memory regions
@@ -198,8 +255,8 @@ fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::
     static mut REGION_COUNT: usize = 0;
 
     // Allocate buffer for memory map
-    // UEFI requires a buffer that's large enough - we'll use a reasonable size
-    let mut buffer = [0u8; 32768];
+    // 64KB buffer for complex memory maps on real hardware (Lenovo, etc.)
+    let mut buffer = [0u8; 65536];
 
     let mmap = bs
         .memory_map(&mut buffer)
@@ -213,12 +270,20 @@ fn get_memory_map(bs: &BootServices) -> Result<(MemoryMap, MemoryMapKey), uefi::
         if count >= MAX_MEMORY_REGIONS {
             break;
         }
+        // CRITICAL: Correct memory type classification for real hardware.
+        // BOOT_SERVICES regions become undefined after ExitBootServices per UEFI spec.
+        // Real hardware (Lenovo, etc.) enforces this - using them causes corruption.
         let kind = match desc.ty {
-            MemoryType::CONVENTIONAL
-            | MemoryType::LOADER_CODE
-            | MemoryType::LOADER_DATA
-            | MemoryType::BOOT_SERVICES_CODE
-            | MemoryType::BOOT_SERVICES_DATA => MemoryKind::Usable,
+            // Only CONVENTIONAL memory is truly free after ExitBootServices
+            MemoryType::CONVENTIONAL => MemoryKind::Usable,
+            // LOADER regions contain our bootloader - can be reclaimed after kernel init
+            MemoryType::LOADER_CODE | MemoryType::LOADER_DATA => {
+                MemoryKind::BootloaderReclaimable
+            }
+            // BOOT_SERVICES regions are INVALID after ExitBootServices - MUST NOT use
+            MemoryType::BOOT_SERVICES_CODE | MemoryType::BOOT_SERVICES_DATA => {
+                MemoryKind::Reserved
+            }
             MemoryType::ACPI_RECLAIM => MemoryKind::AcpiReclaimable,
             MemoryType::ACPI_NON_VOLATILE => MemoryKind::AcpiNvs,
             _ => MemoryKind::Reserved,

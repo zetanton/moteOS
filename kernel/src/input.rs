@@ -4,6 +4,7 @@
 //! It reads keyboard events and dispatches them to the appropriate handlers.
 
 use crate::GLOBAL_STATE;
+use crate::serial;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -20,8 +21,13 @@ use tui::types::Key as TuiKey;
 pub fn handle_input() {
     // Read keyboard input
     if let Some(key) = read_keyboard() {
+        crate::serial::println("Input: processing key...");
         process_key(key);
+        crate::serial::println("Input: key processed");
+        return;
     }
+
+    // Auto-advance handled in event loop based on frame count
 }
 
 /// Read keyboard input
@@ -39,15 +45,34 @@ fn read_keyboard() -> Option<Key> {
         // Poll PS/2 keyboard for any pending scancodes
         // (in case interrupts aren't working or we're in polling mode)
         ps2::poll();
-        
+
         // Read a key from the PS/2 keyboard buffer
-        ps2::read_key()
+        if let Some(key) = ps2::read_key() {
+            return Some(key);
+        }
     }
-    
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        // Other architectures would use different keyboard drivers
-        None
+
+    // Fallback to serial input (useful on macOS when QEMU keyboard is unreliable)
+    read_serial_key()
+}
+
+fn read_serial_key() -> Option<Key> {
+    let byte = serial::read_byte()?;
+    // Filter out 0xFF - this is noise when no data is available
+    if byte == 0xFF {
+        return None;
+    }
+    // Log valid bytes for debugging
+    use alloc::format;
+    crate::serial::println(&format!("Serial byte: 0x{:02X}", byte));
+    match byte {
+        b'\r' | b'\n' => Some(Key::Enter),
+        0x08 | 0x7F => Some(Key::Backspace),
+        0x1B => Some(Key::Esc),
+        b'\t' => Some(Key::Tab),
+        b' ' => Some(Key::Char(' ')),
+        0x20..=0x7E => Some(Key::Char(byte as char)),
+        _ => None,
     }
 }
 
@@ -90,6 +115,10 @@ fn convert_key(key: Key) -> TuiKey {
 ///
 /// * `key` - The key that was pressed
 fn process_key(key: Key) {
+    // Mark screen as needing update (not full redraw) for input changes
+    // This avoids screen flicker - only redraws without clearing
+    crate::screen::mark_needs_update();
+
     let mut state = GLOBAL_STATE.lock();
     if let Some(ref mut kernel_state) = *state {
         // If setup is not complete, handle setup wizard input
@@ -97,6 +126,8 @@ fn process_key(key: Key) {
             // For now, any key completes setup (full wizard implementation pending)
             // In a full implementation, this would pass to SetupWizard::handle_input()
             kernel_state.setup_complete = true;
+            // Need full redraw since we're switching screens
+            crate::screen::mark_dirty();
             return;
         }
 

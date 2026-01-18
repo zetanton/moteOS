@@ -18,15 +18,31 @@ use network::poll_network_stack;
 ///
 /// This function never returns.
 pub fn main_loop() -> ! {
+    crate::serial::println("Event loop starting...");
+    crate::serial::println("Type in this terminal or click QEMU window and type there");
+    let mut loop_count: u64 = 0;
+
     loop {
+        // Heartbeat every ~5 seconds (300 iterations at 16ms each)
+        if loop_count % 300 == 0 {
+            crate::serial::println("Event loop heartbeat");
+        }
+        loop_count = loop_count.wrapping_add(1);
+
         // Handle keyboard input
         crate::input::handle_input();
 
         // Poll network stack
         poll_network();
 
-        // Update screen
+        // Update screen - this might be slow/blocking
+        if loop_count == 1 {
+            crate::serial::println("First screen update...");
+        }
         crate::screen::update_screen();
+        if loop_count == 1 {
+            crate::serial::println("First screen update done");
+        }
 
         // Sleep for ~16ms to maintain ~60 FPS
         sleep_ms(16);

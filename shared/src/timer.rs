@@ -84,32 +84,21 @@ pub fn increment_ticks() {
 /// Sleep for a specified number of milliseconds
 ///
 /// This function busy-waits until the specified time has elapsed.
-/// It's not precise but sufficient for basic timing needs.
+/// Uses a simple delay loop since timer interrupts may not be configured.
 ///
 /// # Arguments
 ///
 /// * `ms` - Number of milliseconds to sleep
 pub fn sleep_ms(ms: u64) {
-    let start_ticks = get_ticks();
-    let ticks_to_wait = (ms * TIMER_FREQUENCY.load(Ordering::Relaxed)) / 1000;
+    // Simple busy-wait delay loop
+    // In an emulator, spin_loop() is very slow, so we use a minimal delay
+    // On real hardware this would need tuning based on CPU speed
+    // For now, just do a brief pause to yield CPU
+    const LOOPS_PER_MS: u64 = 1000;
 
-    // Busy wait until enough ticks have elapsed
-    loop {
-        let current_ticks = get_ticks();
-        if current_ticks.wrapping_sub(start_ticks) >= ticks_to_wait {
-            break;
-        }
-
-        // Yield to allow interrupts
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            core::arch::asm!("hlt");
-        }
-
-        #[cfg(target_arch = "aarch64")]
-        unsafe {
-            core::arch::asm!("wfe"); // Wait for event
-        }
+    for _ in 0..(ms * LOOPS_PER_MS) {
+        // Prevent the loop from being optimized away
+        core::hint::spin_loop();
     }
 }
 

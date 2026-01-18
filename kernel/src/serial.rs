@@ -1,6 +1,7 @@
 //! Minimal serial output (COM1) for headless testing
 
 use core::fmt::{self, Write};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_arch = "x86_64")]
 pub struct SerialPort {
@@ -33,6 +34,18 @@ impl SerialPort {
         while !self.transmit_empty() {}
         unsafe {
             outb(self.base, byte);
+        }
+    }
+
+    fn receive_ready(&self) -> bool {
+        unsafe { inb(self.base + 5) & 0x01 != 0 }
+    }
+
+    pub fn read_byte(&self) -> Option<u8> {
+        if self.receive_ready() {
+            unsafe { Some(inb(self.base)) }
+        } else {
+            None
         }
     }
 }
@@ -104,8 +117,8 @@ impl Write for SerialPort {
 pub fn println(message: &str) {
     #[cfg(target_arch = "x86_64")]
     {
+        init();
         let mut port = SerialPort::new(0x3F8);
-        port.init();
         let _ = writeln!(port, "{}", message);
     }
 
@@ -115,4 +128,44 @@ pub fn println(message: &str) {
         port.init();
         let _ = writeln!(port, "{}", message);
     }
+}
+
+static SERIAL_INIT: AtomicBool = AtomicBool::new(false);
+
+pub fn init() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if !SERIAL_INIT.swap(true, Ordering::SeqCst) {
+            let port = SerialPort::new(0x3F8);
+            port.init();
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        if !SERIAL_INIT.swap(true, Ordering::SeqCst) {
+            let port = SerialPort::new(0x0900_0000);
+            port.init();
+        }
+    }
+}
+
+pub fn read_byte() -> Option<u8> {
+    init();
+    #[cfg(target_arch = "x86_64")]
+    {
+        let port = SerialPort::new(0x3F8);
+        if let Some(byte) = port.read_byte() {
+            return Some(byte);
+        }
+
+        // Fallback to COM2 if COM1 is unused (sometimes QEMU maps serial to COM2)
+        let port2 = SerialPort::new(0x2F8);
+        return port2.read_byte();
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        return None;
+    }
+    #[allow(unreachable_code)]
+    None
 }

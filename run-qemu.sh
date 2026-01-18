@@ -44,6 +44,57 @@ fi
 
 echo ""
 
+# Choose display backend (cocoa|sdl|vnc). Default is cocoa.
+# NOTE: With cocoa display, keyboard input goes to the QEMU window, not the terminal.
+# To type in terminal, use: QEMU_DISPLAY=none ./run-qemu.sh (headless with serial only)
+DISPLAY_BACKEND="${QEMU_DISPLAY:-cocoa}"
+SERIAL_MODE="${QEMU_SERIAL:-stdio}"
+# Use chardev for better terminal handling on macOS
+# signal=off prevents Ctrl+C from killing QEMU
+# mux=on allows multiplexing with QEMU commands (Ctrl+A x to quit)
+if [ "$SERIAL_MODE" = "stdio" ]; then
+    SERIAL_ARGS="-chardev stdio,id=char0,mux=on,signal=off -serial chardev:char0 -mon chardev=char0"
+    echo "✓ Serial on stdio (Ctrl+A X to quit, Ctrl+A H for help)"
+fi
+MONITOR_ARGS=""
+if [ "$SERIAL_MODE" = "pty" ]; then
+    SERIAL_ARGS="-serial pty"
+    echo "✓ Serial on PTY (QEMU will print the PTY path)"
+    echo "  Use: screen /dev/ttyXXX (from QEMU output)"
+elif [ "$SERIAL_MODE" = "tcp" ]; then
+    SERIAL_PORT="${QEMU_SERIAL_PORT:-5555}"
+    SERIAL_ARGS="-serial tcp:127.0.0.1:${SERIAL_PORT},server,nowait -serial tcp:127.0.0.1:$((SERIAL_PORT+1)),server,nowait"
+    echo "✓ Serial on TCP ports ${SERIAL_PORT} (COM1) and $((SERIAL_PORT+1)) (COM2)"
+    echo "  Connect with: nc 127.0.0.1 ${SERIAL_PORT}  (or ${SERIAL_PORT}+1)"
+fi
+if [ "$DISPLAY_BACKEND" = "vnc" ]; then
+    VNC_ADDR="${QEMU_VNC_ADDR:-127.0.0.1:1}"
+    if [ -n "${QEMU_VNC_PASSWORD:-}" ]; then
+        VNC_OPTS="password=on"
+        SERIAL_ARGS="-serial file:/tmp/moteos-serial.log"
+        MONITOR_ARGS="-monitor stdio"
+        echo "✓ VNC display enabled at $VNC_ADDR ($VNC_OPTS)"
+        echo "  Set password in QEMU monitor: change vnc password <password>"
+        echo "  Serial log: /tmp/moteos-serial.log"
+    else
+        VNC_OPTS="${QEMU_VNC_OPTS:-password=off}"
+        echo "✓ VNC display enabled at $VNC_ADDR ($VNC_OPTS)"
+    fi
+    DISPLAY_ARGS="-display none -vnc ${VNC_ADDR},${VNC_OPTS}"
+    echo "  Connect with: open vnc://127.0.0.1:5901"
+elif [ "$DISPLAY_BACKEND" = "sdl" ]; then
+    DISPLAY_ARGS="-sdl"
+    echo "✓ SDL display enabled (legacy -sdl flag)"
+elif [ "$DISPLAY_BACKEND" = "none" ]; then
+    DISPLAY_ARGS="-display none"
+    echo "✓ Headless mode (no display, serial only)"
+else
+    # Default resolution for cocoa display (smaller window)
+    QEMU_RES="${QEMU_RES:-1280x720}"
+    DISPLAY_ARGS="-display cocoa,show-cursor=on -device virtio-vga,xres=${QEMU_RES%x*},yres=${QEMU_RES#*x}"
+    echo "✓ Cocoa display enabled (${QEMU_RES})"
+fi
+
 # Run QEMU with UEFI if firmware available, otherwise BIOS mode
 if [ -n "$OVMF_CODE_FILE" ] && [ -f "$OVMF_CODE_FILE" ]; then
     echo "⚙️  Starting QEMU with UEFI firmware..."
@@ -55,6 +106,19 @@ if [ -n "$OVMF_CODE_FILE" ] && [ -f "$OVMF_CODE_FILE" ]; then
     fi
     trap "rm -f $TEMP_VARS" EXIT
     
+        # Note on keyboard input options:
+    # 1. PS/2: Click in QEMU window and type there (scancodes via i8042 controller)
+    # 2. Serial: Type in this terminal (characters via COM1 serial port)
+    if [ "$DISPLAY_BACKEND" = "none" ]; then
+        echo "📝 Headless mode - type in this terminal for serial input"
+        echo "   Ctrl+A X to quit QEMU"
+    else
+        echo "📝 Input options:"
+        echo "   - Click in QEMU window and type there (PS/2 keyboard)"
+        echo "   - Or run: QEMU_DISPLAY=none ./run-qemu.sh (for terminal input)"
+    fi
+    echo ""
+
     qemu-system-x86_64 \
         -machine q35 \
         -cpu qemu64 \
@@ -65,8 +129,9 @@ if [ -n "$OVMF_CODE_FILE" ] && [ -f "$OVMF_CODE_FILE" ]; then
         -device "virtio-blk-pci,drive=fs0,bootindex=1" \
         -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE_FILE" \
         -drive "if=pflash,format=raw,file=$TEMP_VARS" \
-        -serial stdio \
-        -display cocoa \
+        $SERIAL_ARGS \
+        $MONITOR_ARGS \
+        $DISPLAY_ARGS \
         -no-reboot
 else
     echo "⚙️  Starting QEMU in BIOS mode..."
@@ -74,10 +139,12 @@ else
         -machine q35 \
         -cpu qemu64 \
         -m 1G \
+        -k en-us \
         -cdrom "$ISO_FILE" \
         -boot d \
-        -serial stdio \
-        -display cocoa \
+        $SERIAL_ARGS \
+        $MONITOR_ARGS \
+        $DISPLAY_ARGS \
         -no-reboot
 fi
 
