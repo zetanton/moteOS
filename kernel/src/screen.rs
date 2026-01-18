@@ -134,11 +134,15 @@ fn render_chat_screen(kernel_state: &mut crate::KernelState) {
         return;
     }
 
-    // Only clear on full redraw
-    if needs_full {
-        kernel_state.screen.clear();
+    // For partial updates (input changes), only redraw the input area
+    if needs_update && !needs_full {
+        kernel_state.chat_screen.render_input_only(&mut kernel_state.screen);
+        return;
     }
-    
+
+    // Full redraw: clear and render everything
+    kernel_state.screen.clear();
+
     // Update connection status based on network state
     let status = if kernel_state.network.is_some() {
         tui::screens::ConnectionStatus::Connected
@@ -146,9 +150,7 @@ fn render_chat_screen(kernel_state: &mut crate::KernelState) {
         tui::screens::ConnectionStatus::Disconnected
     };
     kernel_state.chat_screen.set_status(status);
-    
-    // Render the chat screen
+
+    // Render the full chat screen
     kernel_state.chat_screen.render(&mut kernel_state.screen);
-    
-    // Note: Screen presentation is handled by the TUI framework
 }

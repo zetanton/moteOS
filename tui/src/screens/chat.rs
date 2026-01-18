@@ -252,6 +252,35 @@ impl ChatScreen {
         }
     }
 
+    /// Render only the input area (fast update for typing)
+    ///
+    /// This avoids redrawing the entire screen when only the input has changed.
+    ///
+    /// # Arguments
+    ///
+    /// * `screen` - The screen to render to
+    pub fn render_input_only(&mut self, screen: &mut Screen) {
+        let bounds = screen.bounds();
+
+        // Get character dimensions for layout calculations
+        let Some((_, char_height)) = screen.char_size() else {
+            return; // Can't render without a font
+        };
+
+        // Layout constants (from spec: header=1, input=3, footer=1)
+        let header_height = char_height;
+        let input_height = 3 * char_height;
+        let footer_height = char_height;
+
+        // Calculate available height for chat area
+        let total_used = header_height + input_height + footer_height;
+        let chat_height = bounds.height.saturating_sub(total_used);
+
+        // Only render input area
+        let input_rect = Rect::new(0, header_height + chat_height, bounds.width, input_height);
+        self.input.render(screen, input_rect);
+    }
+
     /// Render the chat screen to the given screen
     ///
     /// # Arguments
