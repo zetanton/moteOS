@@ -233,13 +233,20 @@ impl InputWidget {
 
 impl Widget for InputWidget {
     fn render(&self, screen: &mut Screen, rect: Rect) {
+        use crate::screen::BoxStyle;
+
         let theme = screen.theme();
+
+        // Get character dimensions for layout
+        let Some((char_width, char_height)) = screen.char_size() else {
+            return;
+        };
 
         // Determine colors based on focus state
         let bg_color = if self.focused {
-            theme.surface
+            theme.background // Slightly different from surface for contrast
         } else {
-            theme.background
+            theme.surface
         };
         let text_color = if self.focused {
             theme.text_primary
@@ -255,14 +262,14 @@ impl Widget for InputWidget {
         // Clear the input area with background color
         screen.clear_rect(rect, bg_color);
 
-        // Draw border (simple line at bottom)
-        if rect.height > 0 {
-            screen.draw_hline(rect.x, rect.y + rect.height - 1, rect.width, border_color);
-        }
+        // Draw full box border around input area
+        screen.draw_box(rect, BoxStyle::Single, border_color);
 
-        // Calculate text rendering position (with some padding)
-        let text_y = rect.y + 1;
-        let text_x = rect.x + 2;
+        // Calculate text rendering position (inside the border with padding)
+        // Border takes 1 pixel, then add 1 char padding
+        let padding = char_width;
+        let text_x = rect.x + 1 + padding;
+        let text_y = rect.y + (rect.height.saturating_sub(char_height)) / 2; // Vertically center
 
         // Render text or placeholder
         if self.text.is_empty() {
@@ -274,15 +281,11 @@ impl Widget for InputWidget {
 
         // Draw cursor if focused
         if self.focused {
-            // Calculate cursor pixel position
-            if let Some((char_width, char_height)) = screen.char_size() {
-                let cursor_x = text_x + (self.cursor_pos * char_width);
-                let cursor_y = text_y;
+            let cursor_x = text_x + (self.cursor_pos * char_width);
 
-                // Draw cursor as a vertical line
-                if cursor_x < rect.x + rect.width {
-                    screen.draw_vline(cursor_x, cursor_y, char_height, theme.accent_primary);
-                }
+            // Draw cursor as a vertical line (blinking block cursor style)
+            if cursor_x < rect.x + rect.width.saturating_sub(padding + 1) {
+                screen.draw_vline(cursor_x, text_y, char_height, theme.accent_primary);
             }
         }
     }

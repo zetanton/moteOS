@@ -1,20 +1,29 @@
 //! Chat screen implementation
 //!
-//! Provides a full-screen chat interface with:
+//! Provides a bordered chat interface with:
 //! - Message list with scrolling
-//! - Input area
+//! - Input area with full border
 //! - Status bar
 //! - Hotkey bar
+//!
+//! Layout uses margins to create a "window" effect with proper borders.
 
 extern crate alloc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use crate::screen::Screen;
+use crate::screen::{BoxStyle, Screen};
 use crate::theme::Theme;
 use crate::types::{Key, Rect, WidgetEvent};
 use crate::widget::Widget;
 use crate::widgets::{InputWidget, MessageRole, MessageWidget};
+
+// Layout constants (in character units)
+const MARGIN_H: usize = 2;  // Horizontal margin from screen edge
+const MARGIN_V: usize = 1;  // Vertical margin from screen edge
+const HEADER_LINES: usize = 1;
+const INPUT_LINES: usize = 2;
+const FOOTER_LINES: usize = 1;
 
 /// Connection status for the chat screen
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,21 +272,40 @@ impl ChatScreen {
         let bounds = screen.bounds();
 
         // Get character dimensions for layout calculations
-        let Some((_, char_height)) = screen.char_size() else {
+        let Some((char_width, char_height)) = screen.char_size() else {
             return; // Can't render without a font
         };
 
-        // Layout constants (from spec: header=1, input=3, footer=1)
-        let header_height = char_height;
-        let input_height = 3 * char_height;
-        let footer_height = char_height;
+        // Calculate inner container bounds (with margins)
+        let margin_h_px = MARGIN_H * char_width;
+        let margin_v_px = MARGIN_V * char_height;
+        let container_x = margin_h_px;
+        let container_y = margin_v_px;
+        let container_width = bounds.width.saturating_sub(margin_h_px * 2);
+        let container_height = bounds.height.saturating_sub(margin_v_px * 2);
 
-        // Calculate available height for chat area
+        // Inner area (accounting for border)
+        let inner_x = container_x + 1;
+        let inner_y = container_y + 1;
+        let inner_width = container_width.saturating_sub(2);
+        let inner_height = container_height.saturating_sub(2);
+
+        // Layout constants
+        let header_height = HEADER_LINES * char_height;
+        let input_height = INPUT_LINES * char_height;
+        let footer_height = FOOTER_LINES * char_height;
+
+        // Calculate chat area height
         let total_used = header_height + input_height + footer_height;
-        let chat_height = bounds.height.saturating_sub(total_used);
+        let chat_height = inner_height.saturating_sub(total_used);
 
         // Only render input area
-        let input_rect = Rect::new(0, header_height + chat_height, bounds.width, input_height);
+        let input_rect = Rect::new(
+            inner_x,
+            inner_y + header_height + chat_height,
+            inner_width,
+            input_height,
+        );
         self.input.render(screen, input_rect);
     }
 
@@ -295,28 +323,70 @@ impl ChatScreen {
             return; // Can't render without a font
         };
 
-        // Layout constants (from spec: header=1, input=3, footer=1)
-        let header_height = char_height;
-        let input_height = 3 * char_height;
-        let footer_height = char_height;
+        // Clear entire screen with background color first
+        screen.fill_rect(bounds, theme.background);
 
-        // Calculate available height for chat area
+        // Calculate inner container bounds (with margins)
+        let margin_h_px = MARGIN_H * char_width;
+        let margin_v_px = MARGIN_V * char_height;
+        let container_x = margin_h_px;
+        let container_y = margin_v_px;
+        let container_width = bounds.width.saturating_sub(margin_h_px * 2);
+        let container_height = bounds.height.saturating_sub(margin_v_px * 2);
+
+        let container_rect = Rect::new(container_x, container_y, container_width, container_height);
+
+        // Fill container with surface color and draw border
+        screen.fill_rect(container_rect, theme.surface);
+        screen.draw_box(container_rect, BoxStyle::Double, theme.border);
+
+        // Layout constants (using character heights)
+        let header_height = HEADER_LINES * char_height;
+        let input_height = INPUT_LINES * char_height;
+        let footer_height = FOOTER_LINES * char_height;
+
+        // Calculate available height for chat area (inside container, accounting for border)
+        let inner_x = container_x + 1; // 1 pixel for border
+        let inner_y = container_y + 1;
+        let inner_width = container_width.saturating_sub(2); // 2 pixels for left+right border
+        let inner_height = container_height.saturating_sub(2);
+
         let total_used = header_height + input_height + footer_height;
-        let chat_height = bounds.height.saturating_sub(total_used);
+        let chat_height = inner_height.saturating_sub(total_used);
 
-        // Layout rectangles
-        let header_rect = Rect::new(0, 0, bounds.width, header_height);
-        let chat_rect = Rect::new(0, header_height, bounds.width, chat_height);
-        let input_rect = Rect::new(0, header_height + chat_height, bounds.width, input_height);
+        // Layout rectangles (all inside the container border)
+        let header_rect = Rect::new(inner_x, inner_y, inner_width, header_height);
+        let chat_rect = Rect::new(inner_x, inner_y + header_height, inner_width, chat_height);
+        let input_rect = Rect::new(
+            inner_x,
+            inner_y + header_height + chat_height,
+            inner_width,
+            input_height,
+        );
         let footer_rect = Rect::new(
-            0,
-            header_height + chat_height + input_height,
-            bounds.width,
+            inner_x,
+            inner_y + header_height + chat_height + input_height,
+            inner_width,
             footer_height,
         );
 
+        // Draw horizontal separators between sections
+        screen.draw_hline(container_x, inner_y + header_height, container_width, theme.border);
+        screen.draw_hline(
+            container_x,
+            inner_y + header_height + chat_height,
+            container_width,
+            theme.border,
+        );
+        screen.draw_hline(
+            container_x,
+            inner_y + header_height + chat_height + input_height,
+            container_width,
+            theme.border,
+        );
+
         // Render header bar
-        self.render_header(screen, header_rect, theme);
+        self.render_header(screen, header_rect, theme, char_width, char_height);
 
         // Render message list
         self.render_messages(screen, chat_rect, theme, char_width, char_height);
@@ -325,25 +395,25 @@ impl ChatScreen {
         self.input.render(screen, input_rect);
 
         // Render footer/hotkeys
-        self.render_footer(screen, footer_rect, theme, char_width);
+        self.render_footer(screen, footer_rect, theme, char_width, char_height);
     }
 
     /// Render the header bar with title, provider, and status
-    fn render_header(&self, screen: &mut Screen, rect: Rect, theme: &Theme) {
-        // Fill header background
+    fn render_header(
+        &self,
+        screen: &mut Screen,
+        rect: Rect,
+        theme: &Theme,
+        char_width: usize,
+        char_height: usize,
+    ) {
+        // Fill header background (already filled by container, but ensure consistency)
         screen.fill_rect(rect, theme.surface);
 
-        // Draw bottom border
-        screen.draw_hline(rect.x, rect.y + rect.height - 1, rect.width, theme.border);
+        // Center text vertically in header
+        let text_y = rect.y + (rect.height.saturating_sub(char_height)) / 2;
 
-        // Get character dimensions
-        let Some((char_width, char_height)) = screen.char_size() else {
-            return;
-        };
-
-        let text_y = rect.y + (char_height / 2);
-
-        // Render title on the left
+        // Render title on the left with padding
         let title_x = rect.x + char_width;
         screen.draw_text(title_x, text_y, &self.title, theme.text_primary);
 
@@ -352,7 +422,7 @@ impl ChatScreen {
         provider_text.push_str(" / ");
         provider_text.push_str(&self.model);
         let provider_text_width = provider_text.chars().count() * char_width;
-        let provider_x = rect.x + (rect.width / 2) - (provider_text_width / 2);
+        let provider_x = rect.x + (rect.width / 2).saturating_sub(provider_text_width / 2);
         screen.draw_text(provider_x, text_y, &provider_text, theme.text_secondary);
 
         // Render status on the right
@@ -467,10 +537,10 @@ impl ChatScreen {
         let wrapped_lines = MessageWidget::wrap_text(&message.content, available_chars);
         let line_count = wrapped_lines.len().max(1);
 
-        // Add padding: top + bottom + gap for timestamp if present
+        // Reduced padding (1 char top + 1 char bottom = 2 char_heights)
         let padding = char_height * 2;
         let timestamp_height = if message.timestamp.is_some() {
-            char_height
+            char_height + char_height / 4 // timestamp + small gap
         } else {
             0
         };
@@ -485,19 +555,13 @@ impl ChatScreen {
         rect: Rect,
         theme: &Theme,
         char_width: usize,
+        char_height: usize,
     ) {
         // Fill footer background
         screen.fill_rect(rect, theme.surface);
 
-        // Draw top border
-        screen.draw_hline(rect.x, rect.y, rect.width, theme.border);
-
-        // Get character dimensions
-        let Some((_, char_height)) = screen.char_size() else {
-            return;
-        };
-
-        let text_y = rect.y + (char_height / 2);
+        // Center text vertically in footer
+        let text_y = rect.y + (rect.height.saturating_sub(char_height)) / 2;
 
         // Hotkeys to display
         let hotkeys = [
@@ -505,19 +569,19 @@ impl ChatScreen {
             ("F2", "Provider"),
             ("F3", "Model"),
             ("F4", "Config"),
-            ("F9", "New Chat"),
+            ("F9", "New"),
             ("F10", "Quit"),
         ];
 
-        // Render hotkeys
+        // Render hotkeys with tighter spacing
         let mut x = rect.x + char_width;
         for (key, label) in hotkeys.iter() {
             screen.draw_text(x, text_y, key, theme.accent_primary);
             x += key.chars().count() * char_width;
-            screen.draw_text(x, text_y, ":", theme.text_secondary);
+            screen.draw_text(x, text_y, ":", theme.text_tertiary);
             x += char_width;
             screen.draw_text(x, text_y, label, theme.text_secondary);
-            x += label.chars().count() * char_width + char_width * 2; // Spacing
+            x += label.chars().count() * char_width + char_width; // Single char spacing
         }
     }
 

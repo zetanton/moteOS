@@ -222,8 +222,8 @@ impl MessageWidget {
             return; // Can't render without a font
         };
 
-        // Calculate available width in characters (leave padding)
-        let padding = 2; // Padding in characters
+        // Reduced padding for compact layout (1 char instead of 2)
+        let padding = 1; // Padding in characters
         let available_width = if rect.width >= padding * 2 * char_width {
             (rect.width / char_width) - (padding * 2)
         } else {
@@ -242,9 +242,8 @@ impl MessageWidget {
             0
         };
 
-        // Total height needed: text + timestamp + top/bottom padding
-        // Add a small gap between text and timestamp if timestamp exists
-        let gap = if self.timestamp.is_some() { char_height / 2 } else { 0 };
+        // Total height needed: text + timestamp + top/bottom padding (reduced)
+        let gap = if self.timestamp.is_some() { char_height / 4 } else { 0 };
         let total_height = text_height + timestamp_height + gap + (padding * 2 * char_height);
         let bubble_rect = Rect::new(
             rect.x,
@@ -281,7 +280,7 @@ impl MessageWidget {
             let timestamp_x = rect.x + rect.width
                 - (timestamp_text.chars().count() * char_width)
                 - (padding * char_width);
-            let timestamp_y = rect.y + text_height + (padding * char_height) + (char_height / 2);
+            let timestamp_y = rect.y + text_height + (padding * char_height) + (gap);
 
             if timestamp_y + char_height <= rect.y + rect.height {
                 screen.draw_text(timestamp_x, timestamp_y, &timestamp_text, timestamp_color);
